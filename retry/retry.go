@@ -9,12 +9,14 @@ import (
 )
 
 var (
-	ErrExceededTries = errors.New("max tries reached")
+	ErrExceededTries  = errors.New("max tries reached")
+	ErrUnhandledError = errors.New("unhandled error")
 )
 
 type Policy struct {
 	Tries     int
 	Delay     time.Duration
+	Errors    []error
 	BeforeTry func(p Policy, try int)
 	AfterTry  func(p Policy, try int, err error)
 }
@@ -41,6 +43,10 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) error {
 			p.AfterTry(p, turn, err)
 		}
 
+		if err != nil && !handledError(p, err) {
+			return ErrUnhandledError
+		}
+
 		if err == nil {
 			done = true
 			break
@@ -54,4 +60,18 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) error {
 	}
 
 	return nil
+}
+
+func handledError(p Policy, err error) bool {
+	if p.Errors == nil || len(p.Errors) == 0 {
+		return true
+	}
+
+	for _, expectedError := range p.Errors {
+		if errors.Is(expectedError, err) {
+			return true
+		}
+	}
+
+	return false
 }

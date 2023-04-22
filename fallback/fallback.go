@@ -8,7 +8,8 @@ import (
 )
 
 var (
-	ErrUnhandledError = errors.New("unhandled error")
+	ErrNoFallBackHandler = errors.New("no fallback handler")
+	ErrUnhandledError    = errors.New("unhandled error")
 )
 
 type Policy struct {
@@ -23,6 +24,10 @@ func New() Policy {
 }
 
 func (p Policy) Run(ctx context.Context, cmd core.Command) error {
+	if err := validatePolicy(p); err != nil {
+		return err
+	}
+
 	if p.BeforeFallBack != nil {
 		p.BeforeFallBack(p)
 	}
@@ -37,7 +42,9 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) error {
 		return ErrUnhandledError
 	}
 
-	p.FallBackHandler(err)
+	if err != nil {
+		p.FallBackHandler(err)
+	}
 
 	return err
 }
@@ -54,4 +61,12 @@ func handledError(p Policy, err error) bool {
 	}
 
 	return false
+}
+
+func validatePolicy(p Policy) error {
+	if p.FallBackHandler == nil {
+		return ErrNoFallBackHandler
+	}
+
+	return nil
 }

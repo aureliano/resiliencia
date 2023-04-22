@@ -11,6 +11,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestNew(t *testing.T) {
+	p := retry.New()
+	assert.Equal(t, 1, p.Tries)
+	assert.Equal(t, time.Duration(0), p.Delay)
+}
+
 func TestRunMaxTriesExceeded(t *testing.T) {
 	timesAfter, timesBefore := 0, 0
 

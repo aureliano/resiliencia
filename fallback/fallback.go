@@ -46,7 +46,7 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) error {
 		p.FallBackHandler(err)
 	}
 
-	return err
+	return nil
 }
 
 func handledError(p Policy, err error) bool {

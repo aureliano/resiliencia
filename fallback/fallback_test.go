@@ -42,7 +42,7 @@ func TestRun(t *testing.T) {
 	p.AfterTryFallBack = func(p fallback.Policy, err error) {}
 	err := p.Run(context.TODO(), func(ctx context.Context) error { return errTest })
 
-	assert.ErrorIs(t, errTest, err)
+	assert.Nil(t, err)
 	assert.True(t, fallbackCalled)
 }
 
@@ -60,7 +60,7 @@ func TestRunHandleError(t *testing.T) {
 	p.AfterTryFallBack = func(p fallback.Policy, err error) {}
 	err := p.Run(context.TODO(), func(ctx context.Context) error { return errTest2 })
 
-	assert.ErrorIs(t, errTest2, err)
+	assert.Nil(t, err)
 	assert.True(t, fallbackCalled)
 }
 

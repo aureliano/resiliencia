@@ -11,6 +11,8 @@ import (
 var (
 	ErrExceededTries  = errors.New("max tries reached")
 	ErrUnhandledError = errors.New("unhandled error")
+	ErrDelayError     = errors.New("delay must be >= 0")
+	ErrTriesError     = errors.New("tries must be > 0")
 )
 
 type Policy struct {
@@ -30,6 +32,9 @@ func New() Policy {
 
 func (p Policy) Run(ctx context.Context, cmd core.Command) error {
 	done := false
+	if err := validatePolicy(p); err != nil {
+		return err
+	}
 
 	for i := 0; i < p.Tries; i++ {
 		turn := i + 1
@@ -74,4 +79,15 @@ func handledError(p Policy, err error) bool {
 	}
 
 	return false
+}
+
+func validatePolicy(p Policy) error {
+	switch {
+	case p.Delay < 0:
+		return ErrDelayError
+	case p.Tries <= 0:
+		return ErrTriesError
+	default:
+		return nil
+	}
 }

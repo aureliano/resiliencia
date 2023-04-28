@@ -14,7 +14,6 @@ var (
 
 type Policy struct {
 	Timeout       time.Duration
-	Errors        []error
 	BeforeTimeout func(p Policy)
 	AfterTimeout  func(p Policy, err error)
 }

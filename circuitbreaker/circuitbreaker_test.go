@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	circuitbreaker "github.com/aureliano/resiliencia/circuit_breaker"
+	"github.com/aureliano/resiliencia/circuitbreaker"
 	"github.com/stretchr/testify/assert"
 )
 

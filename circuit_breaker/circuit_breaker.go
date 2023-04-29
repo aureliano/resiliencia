@@ -18,8 +18,8 @@ type Policy struct {
 	ThresholdErrors      int
 	ResetTimeout         time.Duration
 	Errors               []error
-	BeforeCircuitBreaker func(p Policy)
-	AfterCircuitBreaker  func(p Policy, err error)
+	BeforeCircuitBreaker func(p Policy, status CircuitBreaker)
+	AfterCircuitBreaker  func(p Policy, status CircuitBreaker, err error)
 	OnOpenCircuit        func(p Policy, status CircuitBreaker, err error)
 	OnHalfOpenCircuit    func(p Policy, status CircuitBreaker)
 	OnClosedCircuit      func(p Policy, status CircuitBreaker)
@@ -41,6 +41,10 @@ const (
 
 var cbState = CircuitBreaker{}
 
+func Reset() {
+	cbState = CircuitBreaker{}
+}
+
 func New() Policy {
 	return Policy{
 		ThresholdErrors: 1,
@@ -54,7 +58,7 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) error {
 	}
 
 	if p.BeforeCircuitBreaker != nil {
-		p.BeforeCircuitBreaker(p)
+		p.BeforeCircuitBreaker(p, cbState)
 	}
 
 	setInitialState(p)
@@ -68,7 +72,7 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) error {
 	setPostState(p, err)
 
 	if p.AfterCircuitBreaker != nil {
-		p.AfterCircuitBreaker(p, err)
+		p.AfterCircuitBreaker(p, cbState, err)
 	}
 
 	return nil
@@ -79,20 +83,15 @@ func setInitialState(p Policy) {
 	shouldChangeToHalfOpen := time.Since(cbState.TimeErrorOcurred) >= p.ResetTimeout
 
 	if circuitIsOpen && shouldChangeToHalfOpen {
-		cbState.State = HalfOpenState
+		halfOpenCircuit(p)
 	}
 }
 
 func setPostState(p Policy, err error) {
-	if err != nil {
+	if err != nil && !handledError(p, err) {
 		openCircuit(p, err)
-	} else {
-		switch cbState.State {
-		case HalfOpenState:
-			closeCircuit(p)
-		case OpenState:
-			halfOpenCircuit(p)
-		}
+	} else if cbState.State == HalfOpenState {
+		closeCircuit(p)
 	}
 }
 
@@ -121,6 +120,20 @@ func halfOpenCircuit(p Policy) {
 	if p.OnHalfOpenCircuit != nil {
 		p.OnHalfOpenCircuit(p, cbState)
 	}
+}
+
+func handledError(p Policy, err error) bool {
+	if p.Errors == nil || len(p.Errors) == 0 {
+		return false
+	}
+
+	for _, expectedError := range p.Errors {
+		if errors.Is(expectedError, err) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func validatePolicy(p Policy) error {

@@ -78,6 +78,10 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) error {
 	return nil
 }
 
+func (p Policy) handledError(err error) bool {
+	return core.ErrorInErrors(p.Errors, err)
+}
+
 func setInitialState(p Policy) {
 	circuitIsOpen := cbState.State == OpenState
 	shouldChangeToHalfOpen := time.Since(cbState.TimeErrorOcurred) >= p.ResetTimeout
@@ -88,7 +92,7 @@ func setInitialState(p Policy) {
 }
 
 func setPostState(p Policy, err error) {
-	if err != nil && !handledError(p, err) {
+	if err != nil && !p.handledError(err) {
 		openCircuit(p, err)
 	} else if cbState.State == HalfOpenState {
 		closeCircuit(p)
@@ -120,20 +124,6 @@ func halfOpenCircuit(p Policy) {
 	if p.OnHalfOpenCircuit != nil {
 		p.OnHalfOpenCircuit(p, cbState)
 	}
-}
-
-func handledError(p Policy, err error) bool {
-	if p.Errors == nil || len(p.Errors) == 0 {
-		return false
-	}
-
-	for _, expectedError := range p.Errors {
-		if errors.Is(expectedError, err) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func validatePolicy(p Policy) error {

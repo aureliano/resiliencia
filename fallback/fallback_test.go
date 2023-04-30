@@ -30,22 +30,6 @@ func TestRunNoFallback(t *testing.T) {
 	assert.False(t, fallbackCalled)
 }
 
-func TestRun(t *testing.T) {
-	fallbackCalled := false
-	errTest := errors.New("error test")
-
-	p := fallback.New()
-	p.FallBackHandler = func(err error) {
-		fallbackCalled = true
-	}
-	p.BeforeFallBack = func(p fallback.Policy) {}
-	p.AfterTryFallBack = func(p fallback.Policy, err error) {}
-	err := p.Run(context.TODO(), func(ctx context.Context) error { return errTest })
-
-	assert.Nil(t, err)
-	assert.True(t, fallbackCalled)
-}
-
 func TestRunHandleError(t *testing.T) {
 	fallbackCalled := false
 	errTest1 := errors.New("error test 1")

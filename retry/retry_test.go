@@ -33,9 +33,11 @@ func TestRunValidatePolicyDelay(t *testing.T) {
 
 func TestRunMaxTriesExceeded(t *testing.T) {
 	timesAfter, timesBefore := 0, 0
+	errTest := errors.New("any")
 
 	p := retry.New()
 	p.Tries = 3
+	p.Errors = []error{errTest}
 	p.Delay = time.Millisecond * 10
 	p.BeforeTry = func(p retry.Policy, try int) {
 		timesBefore++
@@ -46,7 +48,7 @@ func TestRunMaxTriesExceeded(t *testing.T) {
 
 	ctx := context.TODO()
 	e := p.Run(ctx, func(ctx context.Context) error {
-		return fmt.Errorf("any error")
+		return errTest
 	})
 
 	assert.Equal(t, p.Tries, timesBefore)

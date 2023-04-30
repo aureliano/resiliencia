@@ -34,6 +34,7 @@ type Metric struct {
 		StartedAt  time.Time
 		FinishedAt time.Time
 		Duration   time.Duration
+		Error      error
 	}
 }
 
@@ -54,6 +55,7 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) (*Metric, error) {
 		StartedAt  time.Time
 		FinishedAt time.Time
 		Duration   time.Duration
+		Error      error
 	}, p.Tries)}
 	done := false
 
@@ -68,6 +70,7 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) (*Metric, error) {
 
 		m.Executions[i].StartedAt = time.Now()
 		err := cmd(ctx)
+		m.Executions[i].Error = err
 		m.Executions[i].FinishedAt = time.Now()
 		m.FinishedAt = time.Now()
 		m.Executions[i].Duration = m.Executions[i].FinishedAt.Sub(m.Executions[i].StartedAt)

@@ -3,7 +3,6 @@ package retry_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -60,8 +59,12 @@ func TestRunMaxTriesExceeded(t *testing.T) {
 	assert.Equal(t, "", m.ID)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.Equal(t, "", m.ServiceID())
-	assert.Greater(t, time.Microsecond*100, m.PolicyDuration())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
+
+	for _, exec := range m.Executions {
+		assert.ErrorIs(t, exec.Error, errTest)
+	}
 }
 
 func TestRunHandledErrors(t *testing.T) {
@@ -103,13 +106,18 @@ func TestRunHandledErrors(t *testing.T) {
 	assert.Equal(t, "", m.ID)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.Equal(t, "", m.ServiceID())
-	assert.Greater(t, time.Microsecond*100, m.PolicyDuration())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
+
+	assert.ErrorIs(t, m.Executions[0].Error, errTest1)
+	assert.ErrorIs(t, m.Executions[1].Error, errTest2)
+	assert.Nil(t, m.Executions[2].Error)
 }
 
 func TestRunUnhandledError(t *testing.T) {
 	errTest1 := errors.New("error test 1")
 	errTest2 := errors.New("error test 2")
+	errTest3 := errors.New("error test 3")
 	timesAfter, timesBefore := 0, 0
 
 	p := retry.New()
@@ -133,7 +141,7 @@ func TestRunUnhandledError(t *testing.T) {
 		case counter == 2:
 			return errTest2
 		case counter == 3:
-			return fmt.Errorf("unknown error")
+			return errTest3
 		default:
 			return nil
 		}
@@ -148,8 +156,12 @@ func TestRunUnhandledError(t *testing.T) {
 	assert.Equal(t, "", m.ID)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.Equal(t, "", m.ServiceID())
-	assert.Greater(t, time.Microsecond*100, m.PolicyDuration())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
+
+	assert.ErrorIs(t, m.Executions[0].Error, errTest1)
+	assert.ErrorIs(t, m.Executions[1].Error, errTest2)
+	assert.ErrorIs(t, m.Executions[2].Error, errTest3)
 }
 
 func TestRun(t *testing.T) {
@@ -179,6 +191,6 @@ func TestRun(t *testing.T) {
 	assert.Equal(t, "", m.ID)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.Equal(t, "", m.ServiceID())
-	assert.Greater(t, time.Microsecond*100, m.PolicyDuration())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
 }

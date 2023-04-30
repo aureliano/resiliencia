@@ -23,6 +23,20 @@ type Policy struct {
 	AfterTry  func(p Policy, try int, err error)
 }
 
+type Metric struct {
+	ID         string
+	Tries      int
+	Status     int
+	StartedAt  time.Time
+	FinishedAt time.Time
+	Executions []struct {
+		Iteration  int
+		StartedAt  time.Time
+		FinishedAt time.Time
+		Duration   time.Duration
+	}
+}
+
 func New() Policy {
 	return Policy{
 		Tries: 1,
@@ -30,26 +44,41 @@ func New() Policy {
 	}
 }
 
-func (p Policy) Run(ctx context.Context, cmd core.Command) error {
-	done := false
+func (p Policy) Run(ctx context.Context, cmd core.Command) (*Metric, error) {
 	if err := p.validate(); err != nil {
-		return err
+		return nil, err
 	}
+
+	m := Metric{StartedAt: time.Now(), Executions: make([]struct {
+		Iteration  int
+		StartedAt  time.Time
+		FinishedAt time.Time
+		Duration   time.Duration
+	}, p.Tries)}
+	done := false
 
 	for i := 0; i < p.Tries; i++ {
 		turn := i + 1
+		m.Tries = turn
+		m.Executions[i].Iteration = turn
+
 		if p.BeforeTry != nil {
 			p.BeforeTry(p, turn)
 		}
 
+		m.Executions[i].StartedAt = time.Now()
 		err := cmd(ctx)
+		m.Executions[i].FinishedAt = time.Now()
+		m.FinishedAt = time.Now()
+		m.Executions[i].Duration = m.Executions[i].FinishedAt.Sub(m.Executions[i].StartedAt)
 
 		if p.AfterTry != nil {
 			p.AfterTry(p, turn, err)
 		}
 
 		if err != nil && !p.handledError(err) {
-			return ErrUnhandledError
+			m.Status = 1
+			return &m, ErrUnhandledError
 		}
 
 		if err == nil {
@@ -60,11 +89,13 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) error {
 		time.Sleep(p.Delay)
 	}
 
+	m.FinishedAt = time.Now()
 	if !done {
-		return ErrExceededTries
+		m.Status = 1
+		return &m, ErrExceededTries
 	}
 
-	return nil
+	return &m, nil
 }
 
 func (p Policy) handledError(err error) bool {
@@ -80,4 +111,21 @@ func (p Policy) validate() error {
 	default:
 		return nil
 	}
+}
+
+func (m *Metric) ServiceID() string {
+	return m.ID
+}
+
+func (m *Metric) PolicyDuration() time.Duration {
+	sum := time.Duration(0)
+	for _, exec := range m.Executions {
+		sum += exec.Duration
+	}
+
+	return sum
+}
+
+func (m *Metric) Success() bool {
+	return m.Status == 0
 }

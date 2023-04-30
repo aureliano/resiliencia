@@ -19,14 +19,14 @@ func TestNew(t *testing.T) {
 
 func TestRunValidatePolicyTries(t *testing.T) {
 	p := retry.Policy{Tries: 0, Delay: time.Duration(100)}
-	err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
+	_, err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
 
 	assert.ErrorIs(t, retry.ErrTriesError, err)
 }
 
 func TestRunValidatePolicyDelay(t *testing.T) {
 	p := retry.Policy{Tries: 10, Delay: time.Duration(-1)}
-	err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
+	_, err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
 
 	assert.ErrorIs(t, retry.ErrDelayError, err)
 }
@@ -47,13 +47,21 @@ func TestRunMaxTriesExceeded(t *testing.T) {
 	}
 
 	ctx := context.TODO()
-	e := p.Run(ctx, func(ctx context.Context) error {
+	m, e := p.Run(ctx, func(ctx context.Context) error {
 		return errTest
 	})
 
 	assert.Equal(t, p.Tries, timesBefore)
 	assert.Equal(t, p.Tries, timesAfter)
 	assert.ErrorIs(t, e, retry.ErrExceededTries)
+
+	assert.Equal(t, p.Tries, m.Tries)
+	assert.Equal(t, 1, m.Status)
+	assert.Equal(t, "", m.ID)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.Equal(t, "", m.ServiceID())
+	assert.Greater(t, time.Microsecond*100, m.PolicyDuration())
+	assert.False(t, m.Success())
 }
 
 func TestRunHandledErrors(t *testing.T) {
@@ -74,7 +82,7 @@ func TestRunHandledErrors(t *testing.T) {
 
 	ctx := context.TODO()
 	counter := 0
-	e := p.Run(ctx, func(ctx context.Context) error {
+	m, e := p.Run(ctx, func(ctx context.Context) error {
 		counter++
 		switch {
 		case counter == 1:
@@ -89,6 +97,14 @@ func TestRunHandledErrors(t *testing.T) {
 	assert.Equal(t, 3, timesBefore)
 	assert.Equal(t, 3, timesAfter)
 	assert.Nil(t, e)
+
+	assert.Equal(t, p.Tries, m.Tries)
+	assert.Equal(t, 0, m.Status)
+	assert.Equal(t, "", m.ID)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.Equal(t, "", m.ServiceID())
+	assert.Greater(t, time.Microsecond*100, m.PolicyDuration())
+	assert.True(t, m.Success())
 }
 
 func TestRunUnhandledError(t *testing.T) {
@@ -109,7 +125,7 @@ func TestRunUnhandledError(t *testing.T) {
 
 	ctx := context.TODO()
 	counter := 0
-	e := p.Run(ctx, func(ctx context.Context) error {
+	m, e := p.Run(ctx, func(ctx context.Context) error {
 		counter++
 		switch {
 		case counter == 1:
@@ -126,6 +142,14 @@ func TestRunUnhandledError(t *testing.T) {
 	assert.Equal(t, 3, timesBefore)
 	assert.Equal(t, 3, timesAfter)
 	assert.ErrorIs(t, retry.ErrUnhandledError, e)
+
+	assert.Equal(t, 3, m.Tries)
+	assert.Equal(t, 1, m.Status)
+	assert.Equal(t, "", m.ID)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.Equal(t, "", m.ServiceID())
+	assert.Greater(t, time.Microsecond*100, m.PolicyDuration())
+	assert.False(t, m.Success())
 }
 
 func TestRun(t *testing.T) {
@@ -142,11 +166,19 @@ func TestRun(t *testing.T) {
 	}
 
 	ctx := context.TODO()
-	e := p.Run(ctx, func(ctx context.Context) error {
+	m, e := p.Run(ctx, func(ctx context.Context) error {
 		return nil
 	})
 
 	assert.Equal(t, 1, timesBefore)
 	assert.Equal(t, 1, timesAfter)
 	assert.Nil(t, e)
+
+	assert.Equal(t, 1, m.Tries)
+	assert.Equal(t, 0, m.Status)
+	assert.Equal(t, "", m.ID)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.Equal(t, "", m.ServiceID())
+	assert.Greater(t, time.Microsecond*100, m.PolicyDuration())
+	assert.True(t, m.Success())
 }

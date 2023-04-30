@@ -53,7 +53,7 @@ func New() Policy {
 }
 
 func (p Policy) Run(ctx context.Context, cmd core.Command) error {
-	if err := validatePolicy(p); err != nil {
+	if err := p.validate(); err != nil {
 		return err
 	}
 
@@ -80,6 +80,18 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) error {
 
 func (p Policy) handledError(err error) bool {
 	return core.ErrorInErrors(p.Errors, err)
+}
+
+func (p Policy) validate() error {
+	const minResetTimeout = time.Millisecond * 5
+	switch {
+	case p.ThresholdErrors < 1:
+		return ErrThresholdError
+	case p.ResetTimeout < minResetTimeout:
+		return ErrResetTimeoutError
+	default:
+		return nil
+	}
 }
 
 func setInitialState(p Policy) {
@@ -123,17 +135,5 @@ func halfOpenCircuit(p Policy) {
 
 	if p.OnHalfOpenCircuit != nil {
 		p.OnHalfOpenCircuit(p, cbState)
-	}
-}
-
-func validatePolicy(p Policy) error {
-	const minResetTimeout = time.Millisecond * 5
-	switch {
-	case p.ThresholdErrors < 1:
-		return ErrThresholdError
-	case p.ResetTimeout < minResetTimeout:
-		return ErrResetTimeoutError
-	default:
-		return nil
 	}
 }

@@ -7,8 +7,10 @@ import (
 
 type Command func(ctx context.Context) error
 
-type Suplier interface {
+type PolicySupplier interface {
 	Run(ctx context.Context, cmd Command) error
+	handledError(err error) bool
+	validate() error
 }
 
 func ErrorInErrors(expectedErrors []error, err error) bool {

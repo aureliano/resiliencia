@@ -32,7 +32,7 @@ func New() Policy {
 
 func (p Policy) Run(ctx context.Context, cmd core.Command) error {
 	done := false
-	if err := validatePolicy(p); err != nil {
+	if err := p.validate(); err != nil {
 		return err
 	}
 
@@ -71,7 +71,7 @@ func (p Policy) handledError(err error) bool {
 	return core.ErrorInErrors(p.Errors, err)
 }
 
-func validatePolicy(p Policy) error {
+func (p Policy) validate() error {
 	switch {
 	case p.Delay < 0:
 		return ErrDelayError

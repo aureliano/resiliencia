@@ -25,7 +25,7 @@ func New() Policy {
 }
 
 func (p Policy) Run(ctx context.Context, cmd core.Command) error {
-	if err := validatePolicy(p); err != nil {
+	if err := p.validate(); err != nil {
 		return err
 	}
 
@@ -61,7 +61,7 @@ waiting:
 	return err
 }
 
-func validatePolicy(p Policy) error {
+func (p Policy) validate() error {
 	if p.Timeout < 0 {
 		return ErrTimeoutError
 	}

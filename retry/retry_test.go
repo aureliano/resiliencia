@@ -20,14 +20,14 @@ func TestRunValidatePolicyTries(t *testing.T) {
 	p := retry.Policy{Tries: 0, Delay: time.Duration(100)}
 	_, err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
 
-	assert.ErrorIs(t, retry.ErrTriesError, err)
+	assert.ErrorIs(t, err, retry.ErrTriesError)
 }
 
 func TestRunValidatePolicyDelay(t *testing.T) {
 	p := retry.Policy{Tries: 10, Delay: time.Duration(-1)}
 	_, err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
 
-	assert.ErrorIs(t, retry.ErrDelayError, err)
+	assert.ErrorIs(t, err, retry.ErrDelayError)
 }
 
 func TestRunMaxTriesExceeded(t *testing.T) {
@@ -63,7 +63,7 @@ func TestRunMaxTriesExceeded(t *testing.T) {
 	assert.False(t, m.Success())
 
 	for _, exec := range m.Executions {
-		assert.ErrorIs(t, exec.Error, errTest)
+		assert.ErrorIs(t, errTest, exec.Error)
 	}
 }
 
@@ -109,8 +109,8 @@ func TestRunHandledErrors(t *testing.T) {
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
 
-	assert.ErrorIs(t, m.Executions[0].Error, errTest1)
-	assert.ErrorIs(t, m.Executions[1].Error, errTest2)
+	assert.ErrorIs(t, errTest1, m.Executions[0].Error)
+	assert.ErrorIs(t, errTest2, m.Executions[1].Error)
 	assert.Nil(t, m.Executions[2].Error)
 }
 
@@ -149,7 +149,7 @@ func TestRunUnhandledError(t *testing.T) {
 
 	assert.Equal(t, 3, timesBefore)
 	assert.Equal(t, 3, timesAfter)
-	assert.ErrorIs(t, retry.ErrUnhandledError, e)
+	assert.ErrorIs(t, e, retry.ErrUnhandledError)
 
 	assert.Equal(t, 3, m.Tries)
 	assert.Equal(t, 1, m.Status)
@@ -159,9 +159,9 @@ func TestRunUnhandledError(t *testing.T) {
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
 
-	assert.ErrorIs(t, m.Executions[0].Error, errTest1)
-	assert.ErrorIs(t, m.Executions[1].Error, errTest2)
-	assert.ErrorIs(t, m.Executions[2].Error, errTest3)
+	assert.ErrorIs(t, errTest1, m.Executions[0].Error)
+	assert.ErrorIs(t, errTest2, m.Executions[1].Error)
+	assert.ErrorIs(t, errTest3, m.Executions[2].Error)
 }
 
 func TestRun(t *testing.T) {

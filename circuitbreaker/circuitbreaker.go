@@ -2,6 +2,7 @@ package circuitbreaker
 
 import (
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/aureliano/resiliencia/core"
@@ -43,13 +44,18 @@ type CircuitBreaker struct {
 	ErrorCount       int
 }
 
+type circuitBreakerCache struct {
+	mu    sync.Mutex
+	cache map[string]*CircuitBreaker
+}
+
 const (
 	ClosedState   = 0
 	OpenState     = 1
 	HalfOpenState = 2
 )
 
-var cbCache = make(map[string]*CircuitBreaker)
+var cbCache = newCache()
 
 func New(serviceID string) Policy {
 	return Policy{
@@ -64,11 +70,13 @@ func (p Policy) Run(cmd core.Command) (*Metric, error) {
 		return nil, err
 	}
 
-	cb := cbCache[p.ServiceID]
+	cbCache.mu.Lock()
+	cb := cbCache.cache[p.ServiceID]
 	if cb == nil {
 		cb = new(CircuitBreaker)
-		cbCache[p.ServiceID] = cb
+		cbCache.cache[p.ServiceID] = cb
 	}
+	cbCache.mu.Unlock()
 
 	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
 	if p.BeforeCircuitBreaker != nil {
@@ -158,6 +166,10 @@ func halfOpenCircuit(p Policy, cb *CircuitBreaker) {
 	if p.OnHalfOpenCircuit != nil {
 		p.OnHalfOpenCircuit(p, cb)
 	}
+}
+
+func newCache() *circuitBreakerCache {
+	return &circuitBreakerCache{cache: make(map[string]*CircuitBreaker)}
 }
 
 func (m *Metric) ServiceID() string {

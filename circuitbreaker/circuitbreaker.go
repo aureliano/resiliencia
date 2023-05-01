@@ -18,11 +18,11 @@ type Policy struct {
 	ThresholdErrors      int
 	ResetTimeout         time.Duration
 	Errors               []error
-	BeforeCircuitBreaker func(p Policy, status CircuitBreaker)
-	AfterCircuitBreaker  func(p Policy, status CircuitBreaker, err error)
-	OnOpenCircuit        func(p Policy, status CircuitBreaker, err error)
-	OnHalfOpenCircuit    func(p Policy, status CircuitBreaker)
-	OnClosedCircuit      func(p Policy, status CircuitBreaker)
+	BeforeCircuitBreaker func(p Policy, status *CircuitBreaker)
+	AfterCircuitBreaker  func(p Policy, status *CircuitBreaker, err error)
+	OnOpenCircuit        func(p Policy, status *CircuitBreaker, err error)
+	OnHalfOpenCircuit    func(p Policy, status *CircuitBreaker)
+	OnClosedCircuit      func(p Policy, status *CircuitBreaker)
 }
 
 type Metric struct {
@@ -49,11 +49,7 @@ const (
 	HalfOpenState = 2
 )
 
-var cbState = CircuitBreaker{}
-
-func Reset() {
-	cbState = CircuitBreaker{}
-}
+var cbCache = make(map[string]*CircuitBreaker)
 
 func New(serviceID string) Policy {
 	return Policy{
@@ -68,16 +64,22 @@ func (p Policy) Run(cmd core.Command) (*Metric, error) {
 		return nil, err
 	}
 
-	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
-	if p.BeforeCircuitBreaker != nil {
-		p.BeforeCircuitBreaker(p, cbState)
+	cb := cbCache[p.ServiceID]
+	if cb == nil {
+		cb = new(CircuitBreaker)
+		cbCache[p.ServiceID] = cb
 	}
 
-	setInitialState(p)
-	m.State = cbState.State
-	m.ErrorCount = cbState.ErrorCount
+	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
+	if p.BeforeCircuitBreaker != nil {
+		p.BeforeCircuitBreaker(p, cb)
+	}
 
-	if cbState.State == OpenState {
+	setInitialState(p, cb)
+	m.State = cb.State
+	m.ErrorCount = cb.ErrorCount
+
+	if cb.State == OpenState {
 		m.Status = 1
 		m.FinishedAt = time.Now()
 		return &m, ErrCircuitIsOpen
@@ -86,12 +88,12 @@ func (p Policy) Run(cmd core.Command) (*Metric, error) {
 	err := cmd()
 	m.Error = err
 
-	setPostState(p, err)
-	m.State = cbState.State
-	m.ErrorCount = cbState.ErrorCount
+	setPostState(p, cb, err)
+	m.State = cb.State
+	m.ErrorCount = cb.ErrorCount
 
 	if p.AfterCircuitBreaker != nil {
-		p.AfterCircuitBreaker(p, cbState, err)
+		p.AfterCircuitBreaker(p, cb, err)
 	}
 	m.FinishedAt = time.Now()
 
@@ -114,47 +116,47 @@ func (p Policy) validate() error {
 	}
 }
 
-func setInitialState(p Policy) {
-	circuitIsOpen := cbState.State == OpenState
-	shouldChangeToHalfOpen := time.Since(cbState.TimeErrorOcurred) >= p.ResetTimeout
+func setInitialState(p Policy, cb *CircuitBreaker) {
+	circuitIsOpen := cb.State == OpenState
+	shouldChangeToHalfOpen := time.Since(cb.TimeErrorOcurred) >= p.ResetTimeout
 
 	if circuitIsOpen && shouldChangeToHalfOpen {
-		halfOpenCircuit(p)
+		halfOpenCircuit(p, cb)
 	}
 }
 
-func setPostState(p Policy, err error) {
+func setPostState(p Policy, cb *CircuitBreaker, err error) {
 	if err != nil && !p.handledError(err) {
-		openCircuit(p, err)
-	} else if cbState.State == HalfOpenState {
-		closeCircuit(p)
+		openCircuit(p, cb, err)
+	} else if cb.State == HalfOpenState {
+		closeCircuit(p, cb)
 	}
 }
 
-func openCircuit(p Policy, err error) {
-	cbState.State = OpenState
-	cbState.TimeErrorOcurred = time.Now()
-	cbState.ErrorCount++
+func openCircuit(p Policy, cb *CircuitBreaker, err error) {
+	cb.State = OpenState
+	cb.TimeErrorOcurred = time.Now()
+	cb.ErrorCount++
 
 	if p.OnOpenCircuit != nil {
-		p.OnOpenCircuit(p, cbState, err)
+		p.OnOpenCircuit(p, cb, err)
 	}
 }
 
-func closeCircuit(p Policy) {
-	cbState.State = ClosedState
-	cbState.ErrorCount = 0
+func closeCircuit(p Policy, cb *CircuitBreaker) {
+	cb.State = ClosedState
+	cb.ErrorCount = 0
 
 	if p.OnClosedCircuit != nil {
-		p.OnClosedCircuit(p, cbState)
+		p.OnClosedCircuit(p, cb)
 	}
 }
 
-func halfOpenCircuit(p Policy) {
-	cbState.State = HalfOpenState
+func halfOpenCircuit(p Policy, cb *CircuitBreaker) {
+	cb.State = HalfOpenState
 
 	if p.OnHalfOpenCircuit != nil {
-		p.OnHalfOpenCircuit(p, cbState)
+		p.OnHalfOpenCircuit(p, cb)
 	}
 }
 

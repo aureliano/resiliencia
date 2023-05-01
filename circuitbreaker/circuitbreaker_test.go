@@ -3,7 +3,6 @@ package circuitbreaker_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -19,20 +18,22 @@ func TestNew(t *testing.T) {
 
 func TestRunValidatePolicyThresholdErrors(t *testing.T) {
 	p := circuitbreaker.Policy{ThresholdErrors: 0, ResetTimeout: time.Second * 1}
-	err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
+	_, err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
 
 	assert.ErrorIs(t, err, circuitbreaker.ErrThresholdError)
 }
 
 func TestRunValidatePolicyResetTimeout(t *testing.T) {
 	p := circuitbreaker.Policy{ThresholdErrors: 1, ResetTimeout: time.Millisecond * 1}
-	err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
+	_, err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
 
 	assert.ErrorIs(t, err, circuitbreaker.ErrResetTimeoutError)
 }
 
 func TestRunCircuitIsOpen(t *testing.T) {
 	circuitbreaker.Reset()
+	errTest := errors.New("err test")
+
 	p := circuitbreaker.Policy{
 		ThresholdErrors:      1,
 		ResetTimeout:         time.Second * 1,
@@ -43,15 +44,35 @@ func TestRunCircuitIsOpen(t *testing.T) {
 		AfterCircuitBreaker:  func(p circuitbreaker.Policy, status circuitbreaker.CircuitBreaker, err error) {},
 	}
 
-	err := p.Run(context.TODO(), func(ctx context.Context) error { return fmt.Errorf("any error") })
+	m, err := p.Run(context.TODO(), func(ctx context.Context) error { return errTest })
 	assert.Nil(t, err)
 
-	err = p.Run(context.TODO(), func(ctx context.Context) error { return nil })
+	assert.Equal(t, "", m.ID)
+	assert.Equal(t, 0, m.Status)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.ErrorIs(t, m.Error, errTest)
+	assert.EqualValues(t, circuitbreaker.OpenState, m.State)
+	assert.Equal(t, 1, m.ErrorCount)
+	assert.Equal(t, "", m.ServiceID())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, m.Success())
+
+	m, err = p.Run(context.TODO(), func(ctx context.Context) error { return nil })
 	assert.ErrorIs(t, err, circuitbreaker.ErrCircuitIsOpen)
+
+	assert.Equal(t, 1, m.Status)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.Nil(t, m.Error)
+	assert.EqualValues(t, circuitbreaker.OpenState, m.State)
+	assert.Equal(t, 1, m.ErrorCount)
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, m.Success())
 }
 
 func TestRunCircuitHalfOpenSetToClosed(t *testing.T) {
 	circuitbreaker.Reset()
+	errTest := errors.New("err test")
+
 	var state circuitbreaker.CircuitState
 	p := circuitbreaker.Policy{
 		ThresholdErrors:      1,
@@ -65,18 +86,42 @@ func TestRunCircuitHalfOpenSetToClosed(t *testing.T) {
 		},
 	}
 
-	err := p.Run(context.TODO(), func(ctx context.Context) error { return fmt.Errorf("any error") })
+	m, err := p.Run(context.TODO(), func(ctx context.Context) error { return errTest })
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.OpenState, state)
 
-	err = p.Run(context.TODO(), func(ctx context.Context) error { return nil })
+	assert.Equal(t, "", m.ID)
+	assert.Equal(t, 0, m.Status)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.ErrorIs(t, m.Error, errTest)
+	assert.Equal(t, "", m.ServiceID())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, m.Success())
+
+	m, err = p.Run(context.TODO(), func(ctx context.Context) error { return nil })
 	assert.ErrorIs(t, err, circuitbreaker.ErrCircuitIsOpen)
 	assert.EqualValues(t, circuitbreaker.OpenState, state)
 
+	assert.Equal(t, "", m.ID)
+	assert.Equal(t, 1, m.Status)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.Nil(t, m.Error)
+	assert.Equal(t, "", m.ServiceID())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, m.Success())
+
 	time.Sleep(time.Millisecond * 300)
-	err = p.Run(context.TODO(), func(ctx context.Context) error { return nil })
+	m, err = p.Run(context.TODO(), func(ctx context.Context) error { return nil })
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
+
+	assert.Equal(t, "", m.ID)
+	assert.Equal(t, 0, m.Status)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.Nil(t, m.Error)
+	assert.Equal(t, "", m.ServiceID())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, m.Success())
 }
 
 func TestRunHandledErrors(t *testing.T) {
@@ -95,13 +140,29 @@ func TestRunHandledErrors(t *testing.T) {
 		},
 	}
 
-	err := p.Run(context.TODO(), func(ctx context.Context) error { return errTest1 })
+	m, err := p.Run(context.TODO(), func(ctx context.Context) error { return errTest1 })
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
 
-	err = p.Run(context.TODO(), func(ctx context.Context) error { return errTest2 })
+	assert.Equal(t, "", m.ID)
+	assert.Equal(t, 0, m.Status)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.ErrorIs(t, m.Error, errTest1)
+	assert.Equal(t, "", m.ServiceID())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, m.Success())
+
+	m, err = p.Run(context.TODO(), func(ctx context.Context) error { return errTest2 })
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
+
+	assert.Equal(t, "", m.ID)
+	assert.Equal(t, 0, m.Status)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.ErrorIs(t, m.Error, errTest2)
+	assert.Equal(t, "", m.ServiceID())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, m.Success())
 }
 
 func TestRunUnhandledError(t *testing.T) {
@@ -120,11 +181,27 @@ func TestRunUnhandledError(t *testing.T) {
 		},
 	}
 
-	err := p.Run(context.TODO(), func(ctx context.Context) error { return errTest1 })
+	m, err := p.Run(context.TODO(), func(ctx context.Context) error { return errTest1 })
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
 
-	err = p.Run(context.TODO(), func(ctx context.Context) error { return errTest2 })
+	assert.Equal(t, "", m.ID)
+	assert.Equal(t, 0, m.Status)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.ErrorIs(t, m.Error, errTest1)
+	assert.Equal(t, "", m.ServiceID())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, m.Success())
+
+	m, err = p.Run(context.TODO(), func(ctx context.Context) error { return errTest2 })
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.OpenState, state)
+
+	assert.Equal(t, "", m.ID)
+	assert.Equal(t, 0, m.Status)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.ErrorIs(t, m.Error, errTest2)
+	assert.Equal(t, "", m.ServiceID())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, m.Success())
 }

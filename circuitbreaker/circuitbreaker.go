@@ -25,6 +25,16 @@ type Policy struct {
 	OnClosedCircuit      func(p Policy, status CircuitBreaker)
 }
 
+type Metric struct {
+	ID         string
+	Status     int
+	StartedAt  time.Time
+	FinishedAt time.Time
+	Error      error
+	State      CircuitState
+	ErrorCount int
+}
+
 type CircuitState int
 
 type CircuitBreaker struct {
@@ -52,30 +62,39 @@ func New() Policy {
 	}
 }
 
-func (p Policy) Run(ctx context.Context, cmd core.Command) error {
+func (p Policy) Run(ctx context.Context, cmd core.Command) (*Metric, error) {
 	if err := p.validate(); err != nil {
-		return err
+		return nil, err
 	}
 
+	m := Metric{StartedAt: time.Now()}
 	if p.BeforeCircuitBreaker != nil {
 		p.BeforeCircuitBreaker(p, cbState)
 	}
 
 	setInitialState(p)
+	m.State = cbState.State
+	m.ErrorCount = cbState.ErrorCount
 
 	if cbState.State == OpenState {
-		return ErrCircuitIsOpen
+		m.Status = 1
+		m.FinishedAt = time.Now()
+		return &m, ErrCircuitIsOpen
 	}
 
 	err := cmd(ctx)
+	m.Error = err
 
 	setPostState(p, err)
+	m.State = cbState.State
+	m.ErrorCount = cbState.ErrorCount
 
 	if p.AfterCircuitBreaker != nil {
 		p.AfterCircuitBreaker(p, cbState, err)
 	}
+	m.FinishedAt = time.Now()
 
-	return nil
+	return &m, nil
 }
 
 func (p Policy) handledError(err error) bool {
@@ -136,4 +155,16 @@ func halfOpenCircuit(p Policy) {
 	if p.OnHalfOpenCircuit != nil {
 		p.OnHalfOpenCircuit(p, cbState)
 	}
+}
+
+func (m *Metric) ServiceID() string {
+	return m.ID
+}
+
+func (m *Metric) PolicyDuration() time.Duration {
+	return m.FinishedAt.Sub(m.StartedAt)
+}
+
+func (m *Metric) Success() bool {
+	return m.Status == 0
 }

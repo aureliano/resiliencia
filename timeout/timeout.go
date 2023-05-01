@@ -1,7 +1,6 @@
 package timeout
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -13,22 +12,33 @@ var (
 )
 
 type Policy struct {
+	ServiceID     string
 	Timeout       time.Duration
 	BeforeTimeout func(p Policy)
 	AfterTimeout  func(p Policy, err error)
 }
 
-func New() Policy {
+type Metric struct {
+	ID         string
+	Status     int
+	StartedAt  time.Time
+	FinishedAt time.Time
+	Error      error
+}
+
+func New(serviceID string) Policy {
 	return Policy{
-		Timeout: 0,
+		ServiceID: serviceID,
+		Timeout:   0,
 	}
 }
 
-func (p Policy) Run(ctx context.Context, cmd core.Command) error {
+func (p Policy) Run(cmd core.Command) (*Metric, error) {
 	if err := p.validate(); err != nil {
-		return err
+		return nil, err
 	}
 
+	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
 	if p.BeforeTimeout != nil {
 		p.BeforeTimeout(p)
 	}
@@ -37,7 +47,8 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) error {
 	c := make(chan string)
 	go func() {
 		c <- "start"
-		cmdErr = cmd(ctx)
+		cmdErr = cmd()
+		m.Error = cmdErr
 		c <- "done"
 	}()
 
@@ -50,6 +61,7 @@ waiting:
 			}
 		case <-time.After(p.Timeout):
 			err = ErrTimeoutError
+			m.Status = 1
 			break waiting
 		}
 	}
@@ -57,8 +69,9 @@ waiting:
 	if p.AfterTimeout != nil {
 		p.AfterTimeout(p, cmdErr)
 	}
+	m.FinishedAt = time.Now()
 
-	return err
+	return &m, err
 }
 
 func (p Policy) validate() error {
@@ -67,4 +80,16 @@ func (p Policy) validate() error {
 	}
 
 	return nil
+}
+
+func (m *Metric) ServiceID() string {
+	return m.ID
+}
+
+func (m *Metric) PolicyDuration() time.Duration {
+	return m.FinishedAt.Sub(m.StartedAt)
+}
+
+func (m *Metric) Success() bool {
+	return m.Status == 0
 }

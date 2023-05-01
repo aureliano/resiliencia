@@ -1,8 +1,8 @@
 package fallback
 
 import (
-	"context"
 	"errors"
+	"time"
 
 	"github.com/aureliano/resiliencia/core"
 )
@@ -13,40 +13,53 @@ var (
 )
 
 type Policy struct {
-	Errors           []error
-	FallBackHandler  func(err error)
-	BeforeFallBack   func(p Policy)
-	AfterTryFallBack func(p Policy, err error)
+	ServiceID       string
+	Errors          []error
+	FallBackHandler func(err error)
+	BeforeFallBack  func(p Policy)
+	AfterFallBack   func(p Policy, err error)
 }
 
-func New() Policy {
-	return Policy{}
+type Metric struct {
+	ID         string
+	Status     int
+	StartedAt  time.Time
+	FinishedAt time.Time
+	Error      error
 }
 
-func (p Policy) Run(ctx context.Context, cmd core.Command) error {
+func New(serviceID string) Policy {
+	return Policy{ServiceID: serviceID}
+}
+
+func (p Policy) Run(cmd core.Command) (*Metric, error) {
 	if err := p.validate(); err != nil {
-		return err
+		return nil, err
 	}
 
+	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
 	if p.BeforeFallBack != nil {
 		p.BeforeFallBack(p)
 	}
 
-	err := cmd(ctx)
+	err := cmd()
+	m.Error = err
 
-	if p.AfterTryFallBack != nil {
-		p.AfterTryFallBack(p, err)
+	if p.AfterFallBack != nil {
+		p.AfterFallBack(p, err)
 	}
+	m.FinishedAt = time.Now()
 
 	if err != nil && !p.handledError(err) {
-		return ErrUnhandledError
+		m.Status = 1
+		return &m, ErrUnhandledError
 	}
 
 	if err != nil {
 		p.FallBackHandler(err)
 	}
 
-	return nil
+	return &m, nil
 }
 
 func (p Policy) handledError(err error) bool {
@@ -59,4 +72,16 @@ func (p Policy) validate() error {
 	}
 
 	return nil
+}
+
+func (m *Metric) ServiceID() string {
+	return m.ID
+}
+
+func (m *Metric) PolicyDuration() time.Duration {
+	return m.FinishedAt.Sub(m.StartedAt)
+}
+
+func (m *Metric) Success() bool {
+	return m.Status == 0
 }

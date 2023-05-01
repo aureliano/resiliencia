@@ -14,6 +14,7 @@ var (
 )
 
 type Policy struct {
+	ServiceID            string
 	ThresholdErrors      int
 	ResetTimeout         time.Duration
 	Errors               []error
@@ -54,8 +55,9 @@ func Reset() {
 	cbState = CircuitBreaker{}
 }
 
-func New() Policy {
+func New(serviceID string) Policy {
 	return Policy{
+		ServiceID:       serviceID,
 		ThresholdErrors: 1,
 		ResetTimeout:    time.Second * 1,
 	}
@@ -66,7 +68,7 @@ func (p Policy) Run(cmd core.Command) (*Metric, error) {
 		return nil, err
 	}
 
-	m := Metric{StartedAt: time.Now()}
+	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
 	if p.BeforeCircuitBreaker != nil {
 		p.BeforeCircuitBreaker(p, cbState)
 	}

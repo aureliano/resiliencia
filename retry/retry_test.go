@@ -10,7 +10,8 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	p := retry.New()
+	p := retry.New("postForm")
+	assert.Equal(t, "postForm", p.ServiceID)
 	assert.Equal(t, 1, p.Tries)
 	assert.Equal(t, time.Duration(0), p.Delay)
 }
@@ -33,7 +34,7 @@ func TestRunMaxTriesExceeded(t *testing.T) {
 	timesAfter, timesBefore := 0, 0
 	errTest := errors.New("any")
 
-	p := retry.New()
+	p := retry.New("postForm")
 	p.Tries = 3
 	p.Errors = []error{errTest}
 	p.Delay = time.Millisecond * 10
@@ -52,9 +53,9 @@ func TestRunMaxTriesExceeded(t *testing.T) {
 
 	assert.Equal(t, p.Tries, m.Tries)
 	assert.Equal(t, 1, m.Status)
-	assert.Equal(t, "", m.ID)
+	assert.Equal(t, "postForm", m.ID)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Equal(t, "", m.ServiceID())
+	assert.Equal(t, "postForm", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
 
@@ -68,7 +69,7 @@ func TestRunHandledErrors(t *testing.T) {
 	errTest2 := errors.New("error test 2")
 	timesAfter, timesBefore := 0, 0
 
-	p := retry.New()
+	p := retry.New("postForm")
 	p.Tries = 3
 	p.Delay = time.Millisecond * 10
 	p.Errors = []error{errTest1, errTest2}
@@ -98,9 +99,9 @@ func TestRunHandledErrors(t *testing.T) {
 
 	assert.Equal(t, p.Tries, m.Tries)
 	assert.Equal(t, 0, m.Status)
-	assert.Equal(t, "", m.ID)
+	assert.Equal(t, "postForm", m.ID)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Equal(t, "", m.ServiceID())
+	assert.Equal(t, "postForm", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
 
@@ -115,7 +116,7 @@ func TestRunUnhandledError(t *testing.T) {
 	errTest3 := errors.New("error test 3")
 	timesAfter, timesBefore := 0, 0
 
-	p := retry.New()
+	p := retry.New("postForm")
 	p.Tries = 5
 	p.Delay = time.Millisecond * 10
 	p.Errors = []error{errTest1, errTest2}
@@ -147,9 +148,9 @@ func TestRunUnhandledError(t *testing.T) {
 
 	assert.Equal(t, 3, m.Tries)
 	assert.Equal(t, 1, m.Status)
-	assert.Equal(t, "", m.ID)
+	assert.Equal(t, "postForm", m.ID)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Equal(t, "", m.ServiceID())
+	assert.Equal(t, "postForm", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
 
@@ -161,7 +162,7 @@ func TestRunUnhandledError(t *testing.T) {
 func TestRun(t *testing.T) {
 	timesAfter, timesBefore := 0, 0
 
-	p := retry.New()
+	p := retry.New("postForm")
 	p.Tries = 3
 	p.Delay = time.Millisecond * 10
 	p.BeforeTry = func(p retry.Policy, try int) {
@@ -179,9 +180,9 @@ func TestRun(t *testing.T) {
 
 	assert.Equal(t, 1, m.Tries)
 	assert.Equal(t, 0, m.Status)
-	assert.Equal(t, "", m.ID)
+	assert.Equal(t, "postForm", m.ID)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Equal(t, "", m.ServiceID())
+	assert.Equal(t, "postForm", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
 }

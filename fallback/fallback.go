@@ -13,6 +13,7 @@ var (
 )
 
 type Policy struct {
+	ServiceID       string
 	Errors          []error
 	FallBackHandler func(err error)
 	BeforeFallBack  func(p Policy)
@@ -27,8 +28,8 @@ type Metric struct {
 	Error      error
 }
 
-func New() Policy {
-	return Policy{}
+func New(serviceID string) Policy {
+	return Policy{ServiceID: serviceID}
 }
 
 func (p Policy) Run(cmd core.Command) (*Metric, error) {
@@ -36,7 +37,7 @@ func (p Policy) Run(cmd core.Command) (*Metric, error) {
 		return nil, err
 	}
 
-	m := Metric{StartedAt: time.Now()}
+	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
 	if p.BeforeFallBack != nil {
 		p.BeforeFallBack(p)
 	}

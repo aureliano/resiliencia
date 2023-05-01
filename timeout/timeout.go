@@ -12,6 +12,7 @@ var (
 )
 
 type Policy struct {
+	ServiceID     string
 	Timeout       time.Duration
 	BeforeTimeout func(p Policy)
 	AfterTimeout  func(p Policy, err error)
@@ -25,9 +26,10 @@ type Metric struct {
 	Error      error
 }
 
-func New() Policy {
+func New(serviceID string) Policy {
 	return Policy{
-		Timeout: 0,
+		ServiceID: serviceID,
+		Timeout:   0,
 	}
 }
 
@@ -36,7 +38,7 @@ func (p Policy) Run(cmd core.Command) (*Metric, error) {
 		return nil, err
 	}
 
-	m := Metric{StartedAt: time.Now()}
+	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
 	if p.BeforeTimeout != nil {
 		p.BeforeTimeout(p)
 	}

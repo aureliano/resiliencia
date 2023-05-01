@@ -15,6 +15,7 @@ var (
 )
 
 type Policy struct {
+	ServiceID string
 	Tries     int
 	Delay     time.Duration
 	Errors    []error
@@ -37,10 +38,11 @@ type Metric struct {
 	}
 }
 
-func New() Policy {
+func New(serviceID string) Policy {
 	return Policy{
-		Tries: 1,
-		Delay: 0,
+		ServiceID: serviceID,
+		Tries:     1,
+		Delay:     0,
 	}
 }
 
@@ -49,7 +51,7 @@ func (p Policy) Run(cmd core.Command) (*Metric, error) {
 		return nil, err
 	}
 
-	m := Metric{StartedAt: time.Now(), Executions: make([]struct {
+	m := Metric{ID: p.ServiceID, StartedAt: time.Now(), Executions: make([]struct {
 		Iteration  int
 		StartedAt  time.Time
 		FinishedAt time.Time

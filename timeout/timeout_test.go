@@ -10,12 +10,13 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	p := timeout.New()
+	p := timeout.New("remote-service")
+	assert.Equal(t, "remote-service", p.ServiceID)
 	assert.Equal(t, time.Duration(0), p.Timeout)
 }
 
 func TestRunValidatePolicyTimeout(t *testing.T) {
-	p := timeout.New()
+	p := timeout.New("remote-service")
 	p.Timeout = -1
 	_, err := p.Run(func() error { return nil })
 
@@ -23,7 +24,7 @@ func TestRunValidatePolicyTimeout(t *testing.T) {
 }
 
 func TestRun(t *testing.T) {
-	p := timeout.New()
+	p := timeout.New("remote-service")
 	p.Timeout = time.Second * 4
 	p.BeforeTimeout = func(p timeout.Policy) {}
 	p.AfterTimeout = func(p timeout.Policy, err error) {}
@@ -31,18 +32,18 @@ func TestRun(t *testing.T) {
 
 	assert.Nil(t, err)
 
-	assert.Equal(t, "", m.ID)
+	assert.Equal(t, "remote-service", m.ID)
 	assert.Equal(t, 0, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.Nil(t, m.Error)
-	assert.Equal(t, "", m.ServiceID())
+	assert.Equal(t, "remote-service", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
 }
 
 func TestRunWithUnknownError(t *testing.T) {
 	errTest := errors.New("err test")
-	p := timeout.New()
+	p := timeout.New("remote-service")
 	p.Timeout = time.Second * 4
 	p.BeforeTimeout = func(p timeout.Policy) {}
 	p.AfterTimeout = func(p timeout.Policy, err error) {}
@@ -50,17 +51,17 @@ func TestRunWithUnknownError(t *testing.T) {
 
 	assert.Nil(t, err)
 
-	assert.Equal(t, "", m.ID)
+	assert.Equal(t, "remote-service", m.ID)
 	assert.Equal(t, 0, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.ErrorIs(t, m.Error, errTest)
-	assert.Equal(t, "", m.ServiceID())
+	assert.Equal(t, "remote-service", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
 }
 
 func TestRunTimeout(t *testing.T) {
-	p := timeout.New()
+	p := timeout.New("remote-service")
 	p.Timeout = time.Millisecond * 500
 	p.BeforeTimeout = func(p timeout.Policy) {}
 	p.AfterTimeout = func(p timeout.Policy, err error) {}
@@ -71,11 +72,11 @@ func TestRunTimeout(t *testing.T) {
 
 	assert.ErrorIs(t, timeout.ErrTimeoutError, err)
 
-	assert.Equal(t, "", m.ID)
+	assert.Equal(t, "remote-service", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.Nil(t, m.Error)
-	assert.Equal(t, "", m.ServiceID())
+	assert.Equal(t, "remote-service", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
 }

@@ -1,7 +1,6 @@
 package fallback_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -12,7 +11,7 @@ import (
 
 func TestRunValidatePolicyFallBackHandler(t *testing.T) {
 	p := fallback.New()
-	_, err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
+	_, err := p.Run(func() error { return nil })
 
 	assert.ErrorIs(t, err, fallback.ErrNoFallBackHandler)
 }
@@ -25,7 +24,7 @@ func TestRunNoFallback(t *testing.T) {
 	}
 	p.BeforeFallBack = func(p fallback.Policy) {}
 	p.AfterFallBack = func(p fallback.Policy, err error) {}
-	m, _ := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
+	m, _ := p.Run(func() error { return nil })
 
 	assert.False(t, fallbackCalled)
 
@@ -50,7 +49,7 @@ func TestRunHandleError(t *testing.T) {
 	}
 	p.BeforeFallBack = func(p fallback.Policy) {}
 	p.AfterFallBack = func(p fallback.Policy, err error) {}
-	m, err := p.Run(context.TODO(), func(ctx context.Context) error { return errTest2 })
+	m, err := p.Run(func() error { return errTest2 })
 
 	assert.Nil(t, err)
 	assert.True(t, fallbackCalled)
@@ -77,7 +76,7 @@ func TestRunUnhandledError(t *testing.T) {
 	}
 	p.BeforeFallBack = func(p fallback.Policy) {}
 	p.AfterFallBack = func(p fallback.Policy, err error) {}
-	m, err := p.Run(context.TODO(), func(ctx context.Context) error { return errTest3 })
+	m, err := p.Run(func() error { return errTest3 })
 
 	assert.ErrorIs(t, fallback.ErrUnhandledError, err)
 	assert.False(t, fallbackCalled)

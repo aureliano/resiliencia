@@ -6,10 +6,10 @@ import (
 	"time"
 )
 
-type Command func(ctx context.Context) error
+type Command func() error
 
 type PolicySupplier interface {
-	Run(ctx context.Context, cmd Command) error
+	Run(ctx context.Context, cmd Command) (MetricRecorder, error)
 	handledError(err error) bool
 	validate() error
 }

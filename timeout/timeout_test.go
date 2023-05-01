@@ -1,7 +1,6 @@
 package timeout_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -18,7 +17,7 @@ func TestNew(t *testing.T) {
 func TestRunValidatePolicyTimeout(t *testing.T) {
 	p := timeout.New()
 	p.Timeout = -1
-	_, err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
+	_, err := p.Run(func() error { return nil })
 
 	assert.ErrorIs(t, timeout.ErrTimeoutError, err)
 }
@@ -28,9 +27,7 @@ func TestRun(t *testing.T) {
 	p.Timeout = time.Second * 4
 	p.BeforeTimeout = func(p timeout.Policy) {}
 	p.AfterTimeout = func(p timeout.Policy, err error) {}
-	m, err := p.Run(context.TODO(), func(ctx context.Context) error {
-		return nil
-	})
+	m, err := p.Run(func() error { return nil })
 
 	assert.Nil(t, err)
 
@@ -49,9 +46,7 @@ func TestRunWithUnknownError(t *testing.T) {
 	p.Timeout = time.Second * 4
 	p.BeforeTimeout = func(p timeout.Policy) {}
 	p.AfterTimeout = func(p timeout.Policy, err error) {}
-	m, err := p.Run(context.TODO(), func(ctx context.Context) error {
-		return errTest
-	})
+	m, err := p.Run(func() error { return errTest })
 
 	assert.Nil(t, err)
 
@@ -69,7 +64,7 @@ func TestRunTimeout(t *testing.T) {
 	p.Timeout = time.Millisecond * 500
 	p.BeforeTimeout = func(p timeout.Policy) {}
 	p.AfterTimeout = func(p timeout.Policy, err error) {}
-	m, err := p.Run(context.TODO(), func(ctx context.Context) error {
+	m, err := p.Run(func() error {
 		time.Sleep(time.Millisecond * 550)
 		return nil
 	})

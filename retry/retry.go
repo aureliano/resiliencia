@@ -1,7 +1,6 @@
 package retry
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -45,7 +44,7 @@ func New() Policy {
 	}
 }
 
-func (p Policy) Run(ctx context.Context, cmd core.Command) (*Metric, error) {
+func (p Policy) Run(cmd core.Command) (*Metric, error) {
 	if err := p.validate(); err != nil {
 		return nil, err
 	}
@@ -69,7 +68,7 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) (*Metric, error) {
 		}
 
 		m.Executions[i].StartedAt = time.Now()
-		err := cmd(ctx)
+		err := cmd()
 		m.Executions[i].Error = err
 		m.Executions[i].FinishedAt = time.Now()
 		m.FinishedAt = time.Now()

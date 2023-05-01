@@ -1,7 +1,6 @@
 package circuitbreaker
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -62,7 +61,7 @@ func New() Policy {
 	}
 }
 
-func (p Policy) Run(ctx context.Context, cmd core.Command) (*Metric, error) {
+func (p Policy) Run(cmd core.Command) (*Metric, error) {
 	if err := p.validate(); err != nil {
 		return nil, err
 	}
@@ -82,7 +81,7 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) (*Metric, error) {
 		return &m, ErrCircuitIsOpen
 	}
 
-	err := cmd(ctx)
+	err := cmd()
 	m.Error = err
 
 	setPostState(p, err)

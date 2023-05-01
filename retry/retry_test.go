@@ -1,7 +1,6 @@
 package retry_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -18,14 +17,14 @@ func TestNew(t *testing.T) {
 
 func TestRunValidatePolicyTries(t *testing.T) {
 	p := retry.Policy{Tries: 0, Delay: time.Duration(100)}
-	_, err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
+	_, err := p.Run(func() error { return nil })
 
 	assert.ErrorIs(t, err, retry.ErrTriesError)
 }
 
 func TestRunValidatePolicyDelay(t *testing.T) {
 	p := retry.Policy{Tries: 10, Delay: time.Duration(-1)}
-	_, err := p.Run(context.TODO(), func(ctx context.Context) error { return nil })
+	_, err := p.Run(func() error { return nil })
 
 	assert.ErrorIs(t, err, retry.ErrDelayError)
 }
@@ -45,10 +44,7 @@ func TestRunMaxTriesExceeded(t *testing.T) {
 		timesAfter++
 	}
 
-	ctx := context.TODO()
-	m, e := p.Run(ctx, func(ctx context.Context) error {
-		return errTest
-	})
+	m, e := p.Run(func() error { return errTest })
 
 	assert.Equal(t, p.Tries, timesBefore)
 	assert.Equal(t, p.Tries, timesAfter)
@@ -83,9 +79,8 @@ func TestRunHandledErrors(t *testing.T) {
 		timesAfter++
 	}
 
-	ctx := context.TODO()
 	counter := 0
-	m, e := p.Run(ctx, func(ctx context.Context) error {
+	m, e := p.Run(func() error {
 		counter++
 		switch {
 		case counter == 1:
@@ -131,9 +126,8 @@ func TestRunUnhandledError(t *testing.T) {
 		timesAfter++
 	}
 
-	ctx := context.TODO()
 	counter := 0
-	m, e := p.Run(ctx, func(ctx context.Context) error {
+	m, e := p.Run(func() error {
 		counter++
 		switch {
 		case counter == 1:
@@ -177,10 +171,7 @@ func TestRun(t *testing.T) {
 		timesAfter++
 	}
 
-	ctx := context.TODO()
-	m, e := p.Run(ctx, func(ctx context.Context) error {
-		return nil
-	})
+	m, e := p.Run(func() error { return nil })
 
 	assert.Equal(t, 1, timesBefore)
 	assert.Equal(t, 1, timesAfter)

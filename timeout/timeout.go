@@ -1,7 +1,6 @@
 package timeout
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -32,7 +31,7 @@ func New() Policy {
 	}
 }
 
-func (p Policy) Run(ctx context.Context, cmd core.Command) (*Metric, error) {
+func (p Policy) Run(cmd core.Command) (*Metric, error) {
 	if err := p.validate(); err != nil {
 		return nil, err
 	}
@@ -46,7 +45,7 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) (*Metric, error) {
 	c := make(chan string)
 	go func() {
 		c <- "start"
-		cmdErr = cmd(ctx)
+		cmdErr = cmd()
 		m.Error = cmdErr
 		c <- "done"
 	}()

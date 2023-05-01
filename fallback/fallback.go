@@ -1,7 +1,6 @@
 package fallback
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -32,7 +31,7 @@ func New() Policy {
 	return Policy{}
 }
 
-func (p Policy) Run(ctx context.Context, cmd core.Command) (*Metric, error) {
+func (p Policy) Run(cmd core.Command) (*Metric, error) {
 	if err := p.validate(); err != nil {
 		return nil, err
 	}
@@ -42,7 +41,7 @@ func (p Policy) Run(ctx context.Context, cmd core.Command) (*Metric, error) {
 		p.BeforeFallBack(p)
 	}
 
-	err := cmd(ctx)
+	err := cmd()
 	m.Error = err
 
 	if p.AfterFallBack != nil {

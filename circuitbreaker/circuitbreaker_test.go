@@ -2,12 +2,48 @@ package circuitbreaker_test
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/aureliano/resiliencia/circuitbreaker"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestCircuitBreakerState(t *testing.T) {
+	state, err := circuitbreaker.State(circuitbreaker.Policy{ServiceID: "unknown"})
+	assert.EqualValues(t, -1, state)
+	assert.Equal(t, err, circuitbreaker.ErrCircuitBreakerNotFound)
+
+	p := circuitbreaker.Policy{
+		ServiceID:       "service-name",
+		ThresholdErrors: 1,
+		ResetTimeout:    time.Millisecond * 50,
+	}
+
+	_, err = p.Run(func() error { return nil })
+	assert.Nil(t, err)
+	state, err = circuitbreaker.State(p)
+	assert.Nil(t, err)
+	assert.EqualValues(t, circuitbreaker.ClosedState, state)
+
+	_, err = p.Run(func() error { return fmt.Errorf("any") })
+	assert.Nil(t, err)
+	state, err = circuitbreaker.State(p)
+	assert.Nil(t, err)
+	assert.EqualValues(t, circuitbreaker.OpenState, state)
+
+	time.Sleep(time.Millisecond * 50)
+	state, err = circuitbreaker.State(p)
+	assert.Nil(t, err)
+	assert.EqualValues(t, circuitbreaker.HalfOpenState, state)
+
+	_, err = p.Run(func() error { return nil })
+	assert.Nil(t, err)
+	state, err = circuitbreaker.State(p)
+	assert.Nil(t, err)
+	assert.EqualValues(t, circuitbreaker.ClosedState, state)
+}
 
 func TestNew(t *testing.T) {
 	p := circuitbreaker.New("backend-service-name")

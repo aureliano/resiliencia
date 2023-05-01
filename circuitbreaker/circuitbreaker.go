@@ -9,9 +9,10 @@ import (
 )
 
 var (
-	ErrThresholdError    = errors.New("threshold must be >= 1")
-	ErrResetTimeoutError = errors.New("reset timeout must be >= 1")
-	ErrCircuitIsOpen     = errors.New("circuit is open")
+	ErrThresholdError         = errors.New("threshold must be >= 1")
+	ErrResetTimeoutError      = errors.New("reset timeout must be >= 1")
+	ErrCircuitIsOpen          = errors.New("circuit is open")
+	ErrCircuitBreakerNotFound = errors.New("no circuit breaker found")
 )
 
 type Policy struct {
@@ -56,6 +57,19 @@ const (
 )
 
 var cbCache = newCache()
+
+func State(p Policy) (CircuitState, error) {
+	cbCache.mu.Lock()
+	defer cbCache.mu.Unlock()
+
+	cb := cbCache.cache[p.ServiceID]
+	if cb == nil {
+		return -1, ErrCircuitBreakerNotFound
+	}
+	setInitialState(p, cb)
+
+	return cb.State, nil
+}
 
 func New(serviceID string) Policy {
 	return Policy{

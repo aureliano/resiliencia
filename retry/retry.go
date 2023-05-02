@@ -98,7 +98,7 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 			parent.AfterTry(parent, turn, err)
 		}
 
-		if err != nil && !handledError(parent.Errors, err) {
+		if err != nil && !handledError(parent, err) {
 			m.Status = 1
 			metric[reflect.TypeOf(m).String()] = &m
 
@@ -141,8 +141,8 @@ func (m Metric) Success() bool {
 	return m.Status == 0
 }
 
-func handledError(errors []error, err error) bool {
-	return core.ErrorInErrors(errors, err)
+func handledError(p Policy, err error) bool {
+	return core.ErrorInErrors(p.Errors, err)
 }
 
 func validate(p Policy) error {

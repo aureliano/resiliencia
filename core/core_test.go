@@ -19,7 +19,7 @@ func (dummyMetric) ServiceID() string {
 }
 
 func (dummyMetric) PolicyDuration() time.Duration {
-	return time.Duration(time.Second * 55)
+	return time.Second * 55
 }
 
 func (m dummyMetric) Success() bool {

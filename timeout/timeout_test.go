@@ -2,12 +2,28 @@ package timeout_test
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/aureliano/resiliencia/core"
 	"github.com/aureliano/resiliencia/timeout"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestPolicyImplementsPolicySupplier(t *testing.T) {
+	p := timeout.New("remote-service")
+	i := reflect.TypeOf((*core.PolicySupplier)(nil)).Elem()
+
+	assert.True(t, reflect.TypeOf(p).Implements(i))
+}
+
+func TestMetricImplementsMetricRecorder(t *testing.T) {
+	m := timeout.Metric{}
+	i := reflect.TypeOf((*core.MetricRecorder)(nil)).Elem()
+
+	assert.True(t, reflect.TypeOf(m).Implements(i))
+}
 
 func TestNew(t *testing.T) {
 	p := timeout.New("remote-service")
@@ -18,7 +34,8 @@ func TestNew(t *testing.T) {
 func TestRunValidatePolicyTimeout(t *testing.T) {
 	p := timeout.New("remote-service")
 	p.Timeout = -1
-	_, err := p.Run(func() error { return nil })
+	p.Command = func() error { return nil }
+	_, err := p.Run()
 
 	assert.ErrorIs(t, timeout.ErrTimeoutError, err)
 }
@@ -28,7 +45,10 @@ func TestRun(t *testing.T) {
 	p.Timeout = time.Second * 4
 	p.BeforeTimeout = func(p timeout.Policy) {}
 	p.AfterTimeout = func(p timeout.Policy, err error) {}
-	m, err := p.Run(func() error { return nil })
+	p.Command = func() error { return nil }
+
+	r, err := p.Run()
+	m, _ := r.(*timeout.Metric)
 
 	assert.Nil(t, err)
 
@@ -47,7 +67,10 @@ func TestRunWithUnknownError(t *testing.T) {
 	p.Timeout = time.Second * 4
 	p.BeforeTimeout = func(p timeout.Policy) {}
 	p.AfterTimeout = func(p timeout.Policy, err error) {}
-	m, err := p.Run(func() error { return errTest })
+	p.Command = func() error { return errTest }
+
+	r, err := p.Run()
+	m, _ := r.(*timeout.Metric)
 
 	assert.Nil(t, err)
 
@@ -65,10 +88,13 @@ func TestRunTimeout(t *testing.T) {
 	p.Timeout = time.Millisecond * 500
 	p.BeforeTimeout = func(p timeout.Policy) {}
 	p.AfterTimeout = func(p timeout.Policy, err error) {}
-	m, err := p.Run(func() error {
+	p.Command = func() error {
 		time.Sleep(time.Millisecond * 550)
 		return nil
-	})
+	}
+
+	r, err := p.Run()
+	m, _ := r.(*timeout.Metric)
 
 	assert.ErrorIs(t, timeout.ErrTimeoutError, err)
 
@@ -79,4 +105,25 @@ func TestRunTimeout(t *testing.T) {
 	assert.Equal(t, "remote-service", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
+}
+
+func TestRunPolicy(t *testing.T) {
+	p := timeout.New("remote-service")
+	p.Timeout = time.Millisecond * 100
+	p.Command = func() error { return nil }
+	metric := core.NewMetric()
+
+	err := p.RunPolicy(metric, core.PolicySupplier(p))
+	assert.Nil(t, err)
+
+	r := metric[reflect.TypeOf(timeout.Metric{}).String()]
+	m, _ := r.(*timeout.Metric)
+
+	assert.Equal(t, "remote-service", m.ID)
+	assert.Equal(t, 0, m.Status)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.Nil(t, m.Error)
+	assert.Equal(t, "remote-service", m.ServiceID())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, m.Success())
 }

@@ -2,12 +2,28 @@ package retry_test
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/aureliano/resiliencia/core"
 	"github.com/aureliano/resiliencia/retry"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestPolicyImplementsPolicySupplier(t *testing.T) {
+	p := retry.New("postForm")
+	i := reflect.TypeOf((*core.PolicySupplier)(nil)).Elem()
+
+	assert.True(t, reflect.TypeOf(p).Implements(i))
+}
+
+func TestMetricImplementsMetricRecorder(t *testing.T) {
+	m := retry.Metric{}
+	i := reflect.TypeOf((*core.MetricRecorder)(nil)).Elem()
+
+	assert.True(t, reflect.TypeOf(m).Implements(i))
+}
 
 func TestNew(t *testing.T) {
 	p := retry.New("postForm")
@@ -17,15 +33,15 @@ func TestNew(t *testing.T) {
 }
 
 func TestRunValidatePolicyTries(t *testing.T) {
-	p := retry.Policy{Tries: 0, Delay: time.Duration(100)}
-	_, err := p.Run(func() error { return nil })
+	p := retry.Policy{Tries: 0, Delay: time.Duration(100), Command: func() error { return nil }}
+	_, err := p.Run()
 
 	assert.ErrorIs(t, err, retry.ErrTriesError)
 }
 
 func TestRunValidatePolicyDelay(t *testing.T) {
-	p := retry.Policy{Tries: 10, Delay: time.Duration(-1)}
-	_, err := p.Run(func() error { return nil })
+	p := retry.Policy{Tries: 10, Delay: time.Duration(-1), Command: func() error { return nil }}
+	_, err := p.Run()
 
 	assert.ErrorIs(t, err, retry.ErrDelayError)
 }
@@ -44,8 +60,10 @@ func TestRunMaxTriesExceeded(t *testing.T) {
 	p.AfterTry = func(p retry.Policy, try int, err error) {
 		timesAfter++
 	}
+	p.Command = func() error { return errTest }
 
-	m, e := p.Run(func() error { return errTest })
+	r, e := p.Run()
+	m, _ := r.(*retry.Metric)
 
 	assert.Equal(t, p.Tries, timesBefore)
 	assert.Equal(t, p.Tries, timesAfter)
@@ -81,7 +99,7 @@ func TestRunHandledErrors(t *testing.T) {
 	}
 
 	counter := 0
-	m, e := p.Run(func() error {
+	p.Command = func() error {
 		counter++
 		switch {
 		case counter == 1:
@@ -91,7 +109,10 @@ func TestRunHandledErrors(t *testing.T) {
 		default:
 			return nil
 		}
-	})
+	}
+
+	r, e := p.Run()
+	m, _ := r.(*retry.Metric)
 
 	assert.Equal(t, 3, timesBefore)
 	assert.Equal(t, 3, timesAfter)
@@ -128,7 +149,7 @@ func TestRunUnhandledError(t *testing.T) {
 	}
 
 	counter := 0
-	m, e := p.Run(func() error {
+	p.Command = func() error {
 		counter++
 		switch {
 		case counter == 1:
@@ -140,7 +161,10 @@ func TestRunUnhandledError(t *testing.T) {
 		default:
 			return nil
 		}
-	})
+	}
+
+	r, e := p.Run()
+	m, _ := r.(*retry.Metric)
 
 	assert.Equal(t, 3, timesBefore)
 	assert.Equal(t, 3, timesAfter)
@@ -171,12 +195,34 @@ func TestRun(t *testing.T) {
 	p.AfterTry = func(p retry.Policy, try int, err error) {
 		timesAfter++
 	}
+	p.Command = func() error { return nil }
 
-	m, e := p.Run(func() error { return nil })
+	r, e := p.Run()
+	m, _ := r.(*retry.Metric)
 
 	assert.Equal(t, 1, timesBefore)
 	assert.Equal(t, 1, timesAfter)
 	assert.Nil(t, e)
+
+	assert.Equal(t, 1, m.Tries)
+	assert.Equal(t, 0, m.Status)
+	assert.Equal(t, "postForm", m.ID)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.Equal(t, "postForm", m.ServiceID())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, m.Success())
+}
+
+func TestRunPolicy(t *testing.T) {
+	p := retry.New("postForm")
+	p.Command = func() error { return nil }
+	metric := core.NewMetric()
+
+	err := p.RunPolicy(metric, core.PolicySupplier(p))
+	assert.Nil(t, err)
+
+	r := metric[reflect.TypeOf(retry.Metric{}).String()]
+	m, _ := r.(*retry.Metric)
 
 	assert.Equal(t, 1, m.Tries)
 	assert.Equal(t, 0, m.Status)

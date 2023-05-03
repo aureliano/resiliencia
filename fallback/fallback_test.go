@@ -2,12 +2,28 @@ package fallback_test
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/aureliano/resiliencia/core"
 	"github.com/aureliano/resiliencia/fallback"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestPolicyImplementsPolicySupplier(t *testing.T) {
+	p := fallback.New("service-id")
+	i := reflect.TypeOf((*core.PolicySupplier)(nil)).Elem()
+
+	assert.True(t, reflect.TypeOf(p).Implements(i))
+}
+
+func TestMetricImplementsMetricRecorder(t *testing.T) {
+	m := fallback.Metric{}
+	i := reflect.TypeOf((*core.MetricRecorder)(nil)).Elem()
+
+	assert.True(t, reflect.TypeOf(m).Implements(i))
+}
 
 func TestNew(t *testing.T) {
 	p := fallback.New("service-id")
@@ -16,7 +32,8 @@ func TestNew(t *testing.T) {
 
 func TestRunValidatePolicyFallBackHandler(t *testing.T) {
 	p := fallback.New("service-id")
-	_, err := p.Run(func() error { return nil })
+	p.Command = func() error { return nil }
+	_, err := p.Run()
 
 	assert.ErrorIs(t, err, fallback.ErrNoFallBackHandler)
 }
@@ -29,7 +46,10 @@ func TestRunNoFallback(t *testing.T) {
 	}
 	p.BeforeFallBack = func(p fallback.Policy) {}
 	p.AfterFallBack = func(p fallback.Policy, err error) {}
-	m, _ := p.Run(func() error { return nil })
+	p.Command = func() error { return nil }
+
+	r, _ := p.Run()
+	m, _ := r.(fallback.Metric)
 
 	assert.False(t, fallbackCalled)
 
@@ -54,7 +74,10 @@ func TestRunHandleError(t *testing.T) {
 	}
 	p.BeforeFallBack = func(p fallback.Policy) {}
 	p.AfterFallBack = func(p fallback.Policy, err error) {}
-	m, err := p.Run(func() error { return errTest2 })
+	p.Command = func() error { return errTest2 }
+
+	r, err := p.Run()
+	m, _ := r.(fallback.Metric)
 
 	assert.Nil(t, err)
 	assert.True(t, fallbackCalled)
@@ -81,7 +104,10 @@ func TestRunUnhandledError(t *testing.T) {
 	}
 	p.BeforeFallBack = func(p fallback.Policy) {}
 	p.AfterFallBack = func(p fallback.Policy, err error) {}
-	m, err := p.Run(func() error { return errTest3 })
+	p.Command = func() error { return errTest3 }
+
+	r, err := p.Run()
+	m, _ := r.(fallback.Metric)
 
 	assert.ErrorIs(t, fallback.ErrUnhandledError, err)
 	assert.False(t, fallbackCalled)
@@ -93,4 +119,36 @@ func TestRunUnhandledError(t *testing.T) {
 	assert.Equal(t, "service-id", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
+}
+
+func TestRunPolicy(t *testing.T) {
+	fallbackCalled := false
+	errTest1 := errors.New("error test 1")
+	errTest2 := errors.New("error test 2")
+
+	p := fallback.New("service-id")
+	p.Errors = []error{errTest1, errTest2}
+	p.FallBackHandler = func(err error) {
+		fallbackCalled = true
+	}
+	p.BeforeFallBack = func(p fallback.Policy) {}
+	p.AfterFallBack = func(p fallback.Policy, err error) {}
+	p.Command = func() error { return errTest2 }
+
+	metric := core.NewMetric()
+	err := p.RunPolicy(metric, core.PolicySupplier(p))
+
+	r := metric[reflect.TypeOf(fallback.Metric{}).String()]
+	m, _ := r.(fallback.Metric)
+
+	assert.Nil(t, err)
+	assert.True(t, fallbackCalled)
+
+	assert.Equal(t, "service-id", m.ID)
+	assert.Equal(t, 0, m.Status)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.Nil(t, m.Error)
+	assert.Equal(t, "service-id", m.ServiceID())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, m.Success())
 }

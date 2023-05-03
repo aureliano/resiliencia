@@ -2,6 +2,7 @@ package fallback
 
 import (
 	"errors"
+	"reflect"
 	"time"
 
 	"github.com/aureliano/resiliencia/core"
@@ -18,6 +19,7 @@ type Policy struct {
 	FallBackHandler func(err error)
 	BeforeFallBack  func(p Policy)
 	AfterFallBack   func(p Policy, err error)
+	Command         core.Command
 }
 
 type Metric struct {
@@ -32,41 +34,58 @@ func New(serviceID string) Policy {
 	return Policy{ServiceID: serviceID}
 }
 
-func (p Policy) Run(cmd core.Command) (*Metric, error) {
-	if err := p.validate(); err != nil {
-		return nil, err
+func (p Policy) Run() (core.MetricRecorder, error) {
+	metric := core.NewMetric()
+	err := runPolicy(metric, p, func() (core.MetricRecorder, error) { return nil, p.Command() })
+	m := metric[reflect.TypeOf(Metric{}).String()]
+
+	return m, err
+}
+
+func (p Policy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
+	return runPolicy(metric, p, supplier.Run)
+}
+
+func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecorder, error)) error {
+	if err := validate(parent); err != nil {
+		return err
 	}
 
-	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
-	if p.BeforeFallBack != nil {
-		p.BeforeFallBack(p)
+	m := Metric{ID: parent.ServiceID, StartedAt: time.Now()}
+	if parent.BeforeFallBack != nil {
+		parent.BeforeFallBack(parent)
 	}
 
-	err := cmd()
+	mr, err := yield()
+	if mr != nil {
+		metric[reflect.TypeOf(&mr).String()] = mr
+	}
 	m.Error = err
 
-	if p.AfterFallBack != nil {
-		p.AfterFallBack(p, err)
+	if parent.AfterFallBack != nil {
+		parent.AfterFallBack(parent, err)
 	}
 	m.FinishedAt = time.Now()
 
-	if err != nil && !p.handledError(err) {
+	if err != nil && !handledError(parent, err) {
 		m.Status = 1
-		return &m, ErrUnhandledError
+		metric[reflect.TypeOf(m).String()] = m
+		return ErrUnhandledError
 	}
 
 	if err != nil {
-		p.FallBackHandler(err)
+		parent.FallBackHandler(err)
 	}
+	metric[reflect.TypeOf(m).String()] = m
 
-	return &m, nil
+	return nil
 }
 
-func (p Policy) handledError(err error) bool {
+func handledError(p Policy, err error) bool {
 	return core.ErrorInErrors(p.Errors, err)
 }
 
-func (p Policy) validate() error {
+func validate(p Policy) error {
 	if p.FallBackHandler == nil {
 		return ErrNoFallBackHandler
 	}
@@ -74,14 +93,14 @@ func (p Policy) validate() error {
 	return nil
 }
 
-func (m *Metric) ServiceID() string {
+func (m Metric) ServiceID() string {
 	return m.ID
 }
 
-func (m *Metric) PolicyDuration() time.Duration {
+func (m Metric) PolicyDuration() time.Duration {
 	return m.FinishedAt.Sub(m.StartedAt)
 }
 
-func (m *Metric) Success() bool {
+func (m Metric) Success() bool {
 	return m.Status == 0
 }

@@ -3,12 +3,28 @@ package circuitbreaker_test
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/aureliano/resiliencia/circuitbreaker"
+	"github.com/aureliano/resiliencia/core"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestPolicyImplementsPolicySupplier(t *testing.T) {
+	p := circuitbreaker.New("service-name")
+	i := reflect.TypeOf((*core.PolicySupplier)(nil)).Elem()
+
+	assert.True(t, reflect.TypeOf(p).Implements(i))
+}
+
+func TestMetricImplementsMetricRecorder(t *testing.T) {
+	m := circuitbreaker.Metric{}
+	i := reflect.TypeOf((*core.MetricRecorder)(nil)).Elem()
+
+	assert.True(t, reflect.TypeOf(m).Implements(i))
+}
 
 func TestCircuitBreakerState(t *testing.T) {
 	state, err := circuitbreaker.State(circuitbreaker.Policy{ServiceID: "unknown"})
@@ -21,13 +37,15 @@ func TestCircuitBreakerState(t *testing.T) {
 		ResetTimeout:    time.Millisecond * 50,
 	}
 
-	_, err = p.Run(func() error { return nil })
+	p.Command = func() error { return nil }
+	_, err = p.Run()
 	assert.Nil(t, err)
 	state, err = circuitbreaker.State(p)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
 
-	_, err = p.Run(func() error { return fmt.Errorf("any") })
+	p.Command = func() error { return fmt.Errorf("any") }
+	_, err = p.Run()
 	assert.Nil(t, err)
 	state, err = circuitbreaker.State(p)
 	assert.Nil(t, err)
@@ -38,7 +56,8 @@ func TestCircuitBreakerState(t *testing.T) {
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.HalfOpenState, state)
 
-	_, err = p.Run(func() error { return nil })
+	p.Command = func() error { return nil }
+	_, err = p.Run()
 	assert.Nil(t, err)
 	state, err = circuitbreaker.State(p)
 	assert.Nil(t, err)
@@ -54,14 +73,16 @@ func TestNew(t *testing.T) {
 
 func TestRunValidatePolicyThresholdErrors(t *testing.T) {
 	p := circuitbreaker.Policy{ThresholdErrors: 0, ResetTimeout: time.Second * 1}
-	_, err := p.Run(func() error { return nil })
+	p.Command = func() error { return nil }
+	_, err := p.Run()
 
 	assert.ErrorIs(t, err, circuitbreaker.ErrThresholdError)
 }
 
 func TestRunValidatePolicyResetTimeout(t *testing.T) {
 	p := circuitbreaker.Policy{ThresholdErrors: 1, ResetTimeout: time.Millisecond * 1}
-	_, err := p.Run(func() error { return nil })
+	p.Command = func() error { return nil }
+	_, err := p.Run()
 
 	assert.ErrorIs(t, err, circuitbreaker.ErrResetTimeoutError)
 }
@@ -79,8 +100,10 @@ func TestRunCircuitIsOpen(t *testing.T) {
 		OnClosedCircuit:      func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
 		AfterCircuitBreaker:  func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
 	}
+	p.Command = func() error { return errTest }
 
-	m, err := p.Run(func() error { return errTest })
+	r, err := p.Run()
+	m, _ := r.(*circuitbreaker.Metric)
 	assert.Nil(t, err)
 
 	assert.Equal(t, "backend-service-name-1", m.ID)
@@ -93,7 +116,9 @@ func TestRunCircuitIsOpen(t *testing.T) {
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
 
-	m, err = p.Run(func() error { return nil })
+	p.Command = func() error { return nil }
+	r, err = p.Run()
+	m, _ = r.(*circuitbreaker.Metric)
 	assert.ErrorIs(t, err, circuitbreaker.ErrCircuitIsOpen)
 
 	assert.Equal(t, 1, m.Status)
@@ -122,7 +147,9 @@ func TestRunCircuitHalfOpenSetToClosed(t *testing.T) {
 		},
 	}
 
-	m, err := p.Run(func() error { return errTest })
+	p.Command = func() error { return errTest }
+	r, err := p.Run()
+	m, _ := r.(*circuitbreaker.Metric)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.OpenState, state)
 
@@ -134,7 +161,9 @@ func TestRunCircuitHalfOpenSetToClosed(t *testing.T) {
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
 
-	m, err = p.Run(func() error { return nil })
+	p.Command = func() error { return nil }
+	r, err = p.Run()
+	m, _ = r.(*circuitbreaker.Metric)
 	assert.ErrorIs(t, err, circuitbreaker.ErrCircuitIsOpen)
 	assert.EqualValues(t, circuitbreaker.OpenState, state)
 
@@ -147,7 +176,9 @@ func TestRunCircuitHalfOpenSetToClosed(t *testing.T) {
 	assert.False(t, m.Success())
 
 	time.Sleep(time.Millisecond * 300)
-	m, err = p.Run(func() error { return nil })
+	p.Command = func() error { return nil }
+	r, err = p.Run()
+	m, _ = r.(*circuitbreaker.Metric)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
 
@@ -176,7 +207,9 @@ func TestRunHandledErrors(t *testing.T) {
 		},
 	}
 
-	m, err := p.Run(func() error { return errTest1 })
+	p.Command = func() error { return errTest1 }
+	r, err := p.Run()
+	m, _ := r.(*circuitbreaker.Metric)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
 
@@ -188,7 +221,9 @@ func TestRunHandledErrors(t *testing.T) {
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
 
-	m, err = p.Run(func() error { return errTest2 })
+	p.Command = func() error { return errTest2 }
+	r, err = p.Run()
+	m, _ = r.(*circuitbreaker.Metric)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
 
@@ -217,7 +252,9 @@ func TestRunUnhandledError(t *testing.T) {
 		},
 	}
 
-	m, err := p.Run(func() error { return errTest1 })
+	p.Command = func() error { return errTest1 }
+	r, err := p.Run()
+	m, _ := r.(*circuitbreaker.Metric)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
 
@@ -229,7 +266,9 @@ func TestRunUnhandledError(t *testing.T) {
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
 
-	m, err = p.Run(func() error { return errTest2 })
+	p.Command = func() error { return errTest2 }
+	r, err = p.Run()
+	m, _ = r.(*circuitbreaker.Metric)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.OpenState, state)
 
@@ -238,6 +277,40 @@ func TestRunUnhandledError(t *testing.T) {
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.ErrorIs(t, m.Error, errTest2)
 	assert.Equal(t, "backend-service-name-4", m.ServiceID())
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, m.Success())
+}
+
+func TestRunPolicy(t *testing.T) {
+	var state circuitbreaker.CircuitState
+
+	errTest1 := errors.New("error test 1")
+	errTest2 := errors.New("error test 2")
+
+	p := circuitbreaker.Policy{
+		ServiceID:       "backend-service-name-5",
+		ThresholdErrors: 1,
+		ResetTimeout:    time.Millisecond * 300,
+		Errors:          []error{errTest1, errTest2},
+		AfterCircuitBreaker: func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {
+			state = status.State
+		},
+	}
+
+	metric := core.NewMetric()
+
+	p.Command = func() error { return errTest1 }
+	err := p.RunPolicy(metric, core.PolicySupplier(p))
+	assert.Nil(t, err)
+	assert.EqualValues(t, circuitbreaker.ClosedState, state)
+
+	r := metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
+	m, _ := r.(*circuitbreaker.Metric)
+
+	assert.Equal(t, "backend-service-name-5", m.ID)
+	assert.Equal(t, 0, m.Status)
+	assert.Less(t, m.StartedAt, m.FinishedAt)
+	assert.Equal(t, "backend-service-name-5", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
 }

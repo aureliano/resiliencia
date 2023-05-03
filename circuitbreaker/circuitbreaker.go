@@ -2,6 +2,7 @@ package circuitbreaker
 
 import (
 	"errors"
+	"reflect"
 	"sync"
 	"time"
 
@@ -25,6 +26,7 @@ type Policy struct {
 	OnOpenCircuit        func(p Policy, status *CircuitBreaker, err error)
 	OnHalfOpenCircuit    func(p Policy, status *CircuitBreaker)
 	OnClosedCircuit      func(p Policy, status *CircuitBreaker)
+	Command              core.Command
 }
 
 type Metric struct {
@@ -79,54 +81,72 @@ func New(serviceID string) Policy {
 	}
 }
 
-func (p Policy) Run(cmd core.Command) (*Metric, error) {
-	if err := p.validate(); err != nil {
-		return nil, err
+func (p Policy) Run() (core.MetricRecorder, error) {
+	metric := core.NewMetric()
+	err := runPolicy(metric, p, func() (core.MetricRecorder, error) { return nil, p.Command() })
+	m := metric[reflect.TypeOf(Metric{}).String()]
+
+	return m, err
+}
+
+func (p Policy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
+	return runPolicy(metric, p, supplier.Run)
+}
+
+func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecorder, error)) error {
+	if err := validate(parent); err != nil {
+		return err
 	}
 
 	cbCache.mu.Lock()
-	cb := cbCache.cache[p.ServiceID]
+	cb := cbCache.cache[parent.ServiceID]
 	if cb == nil {
 		cb = new(CircuitBreaker)
-		cbCache.cache[p.ServiceID] = cb
+		cbCache.cache[parent.ServiceID] = cb
 	}
 	cbCache.mu.Unlock()
 
-	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
-	if p.BeforeCircuitBreaker != nil {
-		p.BeforeCircuitBreaker(p, cb)
+	m := Metric{ID: parent.ServiceID, StartedAt: time.Now()}
+	if parent.BeforeCircuitBreaker != nil {
+		parent.BeforeCircuitBreaker(parent, cb)
 	}
 
-	setInitialState(p, cb)
+	setInitialState(parent, cb)
 	m.State = cb.State
 	m.ErrorCount = cb.ErrorCount
 
 	if cb.State == OpenState {
 		m.Status = 1
 		m.FinishedAt = time.Now()
-		return &m, ErrCircuitIsOpen
+		metric[reflect.TypeOf(m).String()] = &m
+
+		return ErrCircuitIsOpen
 	}
 
-	err := cmd()
+	mr, err := yield()
+	if mr != nil {
+		metric[reflect.TypeOf(&mr).String()] = mr
+	}
 	m.Error = err
 
-	setPostState(p, cb, err)
+	setPostState(parent, cb, err)
 	m.State = cb.State
 	m.ErrorCount = cb.ErrorCount
 
-	if p.AfterCircuitBreaker != nil {
-		p.AfterCircuitBreaker(p, cb, err)
+	if parent.AfterCircuitBreaker != nil {
+		parent.AfterCircuitBreaker(parent, cb, err)
 	}
 	m.FinishedAt = time.Now()
+	metric[reflect.TypeOf(m).String()] = &m
 
-	return &m, nil
+	return nil
 }
 
-func (p Policy) handledError(err error) bool {
+func handledError(p Policy, err error) bool {
 	return core.ErrorInErrors(p.Errors, err)
 }
 
-func (p Policy) validate() error {
+func validate(p Policy) error {
 	const minResetTimeout = time.Millisecond * 5
 	switch {
 	case p.ThresholdErrors < 1:
@@ -148,7 +168,7 @@ func setInitialState(p Policy, cb *CircuitBreaker) {
 }
 
 func setPostState(p Policy, cb *CircuitBreaker, err error) {
-	if err != nil && !p.handledError(err) {
+	if err != nil && !handledError(p, err) {
 		openCircuit(p, cb, err)
 	} else if cb.State == HalfOpenState {
 		closeCircuit(p, cb)
@@ -186,14 +206,14 @@ func newCache() *circuitBreakerCache {
 	return &circuitBreakerCache{cache: make(map[string]*CircuitBreaker)}
 }
 
-func (m *Metric) ServiceID() string {
+func (m Metric) ServiceID() string {
 	return m.ID
 }
 
-func (m *Metric) PolicyDuration() time.Duration {
+func (m Metric) PolicyDuration() time.Duration {
 	return m.FinishedAt.Sub(m.StartedAt)
 }
 
-func (m *Metric) Success() bool {
+func (m Metric) Success() bool {
 	return m.Status == 0
 }

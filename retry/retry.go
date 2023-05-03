@@ -2,6 +2,7 @@ package retry
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -9,10 +10,11 @@ import (
 )
 
 var (
-	ErrExceededTries  = errors.New("max tries reached")
-	ErrUnhandledError = errors.New("unhandled error")
-	ErrDelayError     = errors.New("delay must be >= 0")
-	ErrTriesError     = errors.New("tries must be > 0")
+	ErrDelayError           = fmt.Errorf("delay must be >= %d", MinDelay)
+	ErrTriesError           = fmt.Errorf("tries must be >= %d", MinTries)
+	ErrExceededTries        = errors.New("max tries reached")
+	ErrUnhandledError       = errors.New("unhandled error")
+	ErrCommandRequiredError = errors.New("command is required")
 )
 
 type Policy struct {
@@ -39,6 +41,11 @@ type Metric struct {
 		Error      error
 	}
 }
+
+const (
+	MinDelay = 0
+	MinTries = 1
+)
 
 func New(serviceID string) Policy {
 	return Policy{
@@ -147,10 +154,12 @@ func handledError(p Policy, err error) bool {
 
 func validate(p Policy) error {
 	switch {
-	case p.Delay < 0:
+	case p.Delay < MinDelay:
 		return ErrDelayError
-	case p.Tries <= 0:
+	case p.Tries < MinTries:
 		return ErrTriesError
+	case p.Command == nil:
+		return ErrCommandRequiredError
 	default:
 		return nil
 	}

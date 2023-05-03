@@ -2,6 +2,7 @@ package timeout
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -9,7 +10,8 @@ import (
 )
 
 var (
-	ErrTimeoutError = errors.New("timeout must be >= 0")
+	ErrTimeoutError         = fmt.Errorf("timeout must be >= %d", MinTimeout)
+	ErrCommandRequiredError = errors.New("command is required")
 )
 
 type Policy struct {
@@ -27,6 +29,8 @@ type Metric struct {
 	FinishedAt time.Time
 	Error      error
 }
+
+const MinTimeout = 0
 
 func New(serviceID string) Policy {
 	return Policy{
@@ -108,9 +112,12 @@ func (m Metric) Success() bool {
 }
 
 func validate(p Policy) error {
-	if p.Timeout < 0 {
+	switch {
+	case p.Timeout < MinTimeout:
 		return ErrTimeoutError
+	case p.Command == nil:
+		return ErrCommandRequiredError
+	default:
+		return nil
 	}
-
-	return nil
 }

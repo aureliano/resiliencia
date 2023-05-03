@@ -38,6 +38,15 @@ func TestRunValidatePolicyFallBackHandler(t *testing.T) {
 	assert.ErrorIs(t, err, fallback.ErrNoFallBackHandler)
 }
 
+func TestRunValidatePolicyCommand(t *testing.T) {
+	p := fallback.New("service-id")
+	p.FallBackHandler = func(err error) {}
+
+	_, err := p.Run()
+
+	assert.ErrorIs(t, err, fallback.ErrCommandRequiredError)
+}
+
 func TestRunNoFallback(t *testing.T) {
 	fallbackCalled := false
 	p := fallback.New("service-id")

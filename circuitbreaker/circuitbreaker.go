@@ -2,6 +2,7 @@ package circuitbreaker
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"sync"
 	"time"
@@ -10,8 +11,9 @@ import (
 )
 
 var (
-	ErrThresholdError         = errors.New("threshold must be >= 1")
-	ErrResetTimeoutError      = errors.New("reset timeout must be >= 1")
+	ErrThresholdError         = fmt.Errorf("threshold must be >= %d", MinThresholdErrors)
+	ErrResetTimeoutError      = fmt.Errorf("reset timeout must be >= %dms", MinResetTimeout.Milliseconds())
+	ErrCommandRequiredError   = errors.New("command is required")
 	ErrCircuitIsOpen          = errors.New("circuit is open")
 	ErrCircuitBreakerNotFound = errors.New("no circuit breaker found")
 )
@@ -56,6 +58,9 @@ const (
 	ClosedState   = 0
 	OpenState     = 1
 	HalfOpenState = 2
+
+	MinResetTimeout    = time.Millisecond * 5
+	MinThresholdErrors = 1
 )
 
 var cbCache = newCache()
@@ -76,7 +81,7 @@ func State(p Policy) (CircuitState, error) {
 func New(serviceID string) Policy {
 	return Policy{
 		ServiceID:       serviceID,
-		ThresholdErrors: 1,
+		ThresholdErrors: MinThresholdErrors,
 		ResetTimeout:    time.Second * 1,
 	}
 }
@@ -142,22 +147,6 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 	return nil
 }
 
-func handledError(p Policy, err error) bool {
-	return core.ErrorInErrors(p.Errors, err)
-}
-
-func validate(p Policy) error {
-	const minResetTimeout = time.Millisecond * 5
-	switch {
-	case p.ThresholdErrors < 1:
-		return ErrThresholdError
-	case p.ResetTimeout < minResetTimeout:
-		return ErrResetTimeoutError
-	default:
-		return nil
-	}
-}
-
 func setInitialState(p Policy, cb *CircuitBreaker) {
 	circuitIsOpen := cb.State == OpenState
 	shouldChangeToHalfOpen := time.Since(cb.TimeErrorOcurred) >= p.ResetTimeout
@@ -199,6 +188,23 @@ func halfOpenCircuit(p Policy, cb *CircuitBreaker) {
 
 	if p.OnHalfOpenCircuit != nil {
 		p.OnHalfOpenCircuit(p, cb)
+	}
+}
+
+func handledError(p Policy, err error) bool {
+	return core.ErrorInErrors(p.Errors, err)
+}
+
+func validate(p Policy) error {
+	switch {
+	case p.ThresholdErrors < MinThresholdErrors:
+		return ErrThresholdError
+	case p.ResetTimeout < MinResetTimeout:
+		return ErrResetTimeoutError
+	case p.Command == nil:
+		return ErrCommandRequiredError
+	default:
+		return nil
 	}
 }
 

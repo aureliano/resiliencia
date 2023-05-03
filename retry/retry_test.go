@@ -33,17 +33,24 @@ func TestNew(t *testing.T) {
 }
 
 func TestRunValidatePolicyTries(t *testing.T) {
-	p := retry.Policy{Tries: 0, Delay: time.Duration(100), Command: func() error { return nil }}
+	p := retry.Policy{Tries: 0, Delay: retry.MinDelay, Command: func() error { return nil }}
 	_, err := p.Run()
 
 	assert.ErrorIs(t, err, retry.ErrTriesError)
 }
 
 func TestRunValidatePolicyDelay(t *testing.T) {
-	p := retry.Policy{Tries: 10, Delay: time.Duration(-1), Command: func() error { return nil }}
+	p := retry.Policy{Tries: retry.MinTries, Delay: time.Duration(-1), Command: func() error { return nil }}
 	_, err := p.Run()
 
 	assert.ErrorIs(t, err, retry.ErrDelayError)
+}
+
+func TestRunValidatePolicyCommand(t *testing.T) {
+	p := retry.Policy{Tries: retry.MinTries, Delay: retry.MinDelay}
+	_, err := p.Run()
+
+	assert.ErrorIs(t, err, retry.ErrCommandRequiredError)
 }
 
 func TestRunMaxTriesExceeded(t *testing.T) {

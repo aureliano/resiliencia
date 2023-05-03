@@ -37,7 +37,16 @@ func TestRunValidatePolicyTimeout(t *testing.T) {
 	p.Command = func() error { return nil }
 	_, err := p.Run()
 
-	assert.ErrorIs(t, timeout.ErrTimeoutError, err)
+	assert.ErrorIs(t, err, timeout.ErrTimeoutError)
+}
+
+func TestRunValidatePolicyCommand(t *testing.T) {
+	p := timeout.New("remote-service")
+	p.Timeout = timeout.MinTimeout
+
+	_, err := p.Run()
+
+	assert.ErrorIs(t, err, timeout.ErrCommandRequiredError)
 }
 
 func TestRun(t *testing.T) {

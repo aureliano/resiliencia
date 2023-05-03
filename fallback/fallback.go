@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	ErrNoFallBackHandler = errors.New("no fallback handler")
-	ErrUnhandledError    = errors.New("unhandled error")
+	ErrNoFallBackHandler    = errors.New("no fallback handler")
+	ErrCommandRequiredError = errors.New("command is required")
+	ErrUnhandledError       = errors.New("unhandled error")
 )
 
 type Policy struct {
@@ -86,11 +87,14 @@ func handledError(p Policy, err error) bool {
 }
 
 func validate(p Policy) error {
-	if p.FallBackHandler == nil {
+	switch {
+	case p.FallBackHandler == nil:
 		return ErrNoFallBackHandler
+	case p.Command == nil:
+		return ErrCommandRequiredError
+	default:
+		return nil
 	}
-
-	return nil
 }
 
 func (m Metric) ServiceID() string {

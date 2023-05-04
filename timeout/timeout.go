@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	ErrTimeoutError         = fmt.Errorf("timeout must be >= %d", MinTimeout)
-	ErrCommandRequiredError = errors.New("command is required")
+	ErrTimeoutError           = fmt.Errorf("timeout must be >= %d", MinTimeout)
+	ErrExecutionTimedOutError = errors.New("execution timed out")
+	ErrCommandRequiredError   = errors.New("command is required")
 )
 
 type Policy struct {
@@ -61,31 +62,36 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 		parent.BeforeTimeout(parent)
 	}
 
-	var err, cmdErr error
+	cmr := make(chan core.MetricRecorder)
+	cerr := make(chan error)
 	c := make(chan string)
-	go func() {
-		c <- "start"
-		var mr core.MetricRecorder
+	go executeCommand(cmr, cerr, c, yield)
 
-		mr, cmdErr = yield()
-		if mr != nil {
-			metric[reflect.TypeOf(&mr).String()] = mr
-		}
-
-		m.Error = cmdErr
-		c <- "done"
-	}()
+	var mr core.MetricRecorder
+	var cmdErr error
+	var merror error
 
 waiting:
 	for {
 		select {
+		case mr = <-cmr:
+			if mr != nil {
+				metric[reflect.TypeOf(mr).String()] = mr
+			}
+		case e := <-cerr:
+			if e != nil {
+				cmdErr = e
+				m.Error = e
+			}
 		case str := <-c:
 			if str == "done" {
 				break waiting
 			}
 		case <-time.After(parent.Timeout):
-			err = ErrTimeoutError
+			merror = ErrExecutionTimedOutError
+			m.Error = ErrExecutionTimedOutError
 			m.Status = 1
+
 			break waiting
 		}
 	}
@@ -94,9 +100,28 @@ waiting:
 		parent.AfterTimeout(parent, cmdErr)
 	}
 	m.FinishedAt = time.Now()
-	metric[reflect.TypeOf(m).String()] = &m
+	metric[reflect.TypeOf(m).String()] = m
 
-	return err
+	return merror
+}
+
+func executeCommand(cmr chan core.MetricRecorder, cerr chan error, c chan string,
+	yield func() (core.MetricRecorder, error)) {
+	c <- "start"
+	lmr, lerr := yield()
+
+	if lmr != nil {
+		cmr <- lmr
+	}
+
+	if lerr != nil {
+		cerr <- lerr
+	}
+	close(cmr)
+	close(cerr)
+
+	c <- "done"
+	close(c)
 }
 
 func (m Metric) ServiceID() string {

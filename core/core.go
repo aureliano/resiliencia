@@ -24,7 +24,7 @@ func NewMetric() Metric {
 	return make(map[string]MetricRecorder)
 }
 
-func (m Metric) ServiceID() string {
+func (Metric) ServiceID() string {
 	return "policy-chain"
 }
 

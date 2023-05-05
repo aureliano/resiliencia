@@ -78,28 +78,37 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 		FinishedAt time.Time
 		Duration   time.Duration
 		Error      error
-	}, parent.Tries)}
+	}, 0)}
 	done := false
 
 	for i := 0; i < parent.Tries; i++ {
 		turn := i + 1
 		m.Tries = turn
-		m.Executions[i].Iteration = turn
+		exec := struct {
+			Iteration  int
+			StartedAt  time.Time
+			FinishedAt time.Time
+			Duration   time.Duration
+			Error      error
+		}{}
+
+		exec.Iteration = turn
 
 		if parent.BeforeTry != nil {
 			parent.BeforeTry(parent, turn)
 		}
 
-		m.Executions[i].StartedAt = time.Now()
+		exec.StartedAt = time.Now()
 		mr, err := yield()
 		if mr != nil {
-			metric[reflect.TypeOf(&mr).String()] = mr
+			metric[reflect.TypeOf(mr).String()] = mr
 		}
 
-		m.Executions[i].Error = err
-		m.Executions[i].FinishedAt = time.Now()
+		exec.Error = err
+		exec.FinishedAt = time.Now()
 		m.FinishedAt = time.Now()
-		m.Executions[i].Duration = m.Executions[i].FinishedAt.Sub(m.Executions[i].StartedAt)
+		exec.Duration = exec.FinishedAt.Sub(exec.StartedAt)
+		m.Executions = append(m.Executions, exec)
 
 		if parent.AfterTry != nil {
 			parent.AfterTry(parent, turn, err)
@@ -107,7 +116,7 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 
 		if err != nil && !handledError(parent, err) {
 			m.Status = 1
-			metric[reflect.TypeOf(m).String()] = &m
+			metric[reflect.TypeOf(m).String()] = m
 
 			return ErrUnhandledError
 		}
@@ -121,12 +130,14 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 	}
 
 	m.FinishedAt = time.Now()
-	metric[reflect.TypeOf(m).String()] = &m
 
 	if !done {
 		m.Status = 1
+		metric[reflect.TypeOf(m).String()] = m
+
 		return ErrExceededTries
 	}
+	metric[reflect.TypeOf(m).String()] = m
 
 	return nil
 }

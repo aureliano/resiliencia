@@ -132,7 +132,7 @@ func (m Metric) PolicyDuration() time.Duration {
 }
 
 func (m Metric) Success() bool {
-	return m.Status == 0
+	return (m.Status == 0) && (m.Error == nil)
 }
 
 func validate(p Policy) error {

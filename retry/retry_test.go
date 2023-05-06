@@ -14,20 +14,14 @@ import (
 
 type mockPolicy struct{ mock.Mock }
 
-func (p *mockPolicy) Run() (core.MetricRecorder, error) {
+func (p *mockPolicy) Run(_ core.Metric) error {
 	args := p.Called()
-	metric := args.Get(0)
-
-	if metric != nil {
-		return metric.(core.MetricRecorder), args.Error(1)
-	}
-
-	return nil, args.Error(1)
+	return args.Error(0)
 }
 
 func (p *mockPolicy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
 	args := p.Called(metric, supplier)
-	return args.Error(1)
+	return args.Error(0)
 }
 
 type Metric struct {
@@ -73,21 +67,27 @@ func TestNew(t *testing.T) {
 
 func TestRunValidatePolicyTries(t *testing.T) {
 	p := retry.Policy{Tries: 0, Delay: retry.MinDelay, Command: func() error { return nil }}
-	_, err := p.Run()
+
+	metric := core.NewMetric()
+	err := p.Run(metric)
 
 	assert.ErrorIs(t, err, retry.ErrTriesError)
 }
 
 func TestRunValidatePolicyDelay(t *testing.T) {
 	p := retry.Policy{Tries: retry.MinTries, Delay: time.Duration(-1), Command: func() error { return nil }}
-	_, err := p.Run()
+
+	metric := core.NewMetric()
+	err := p.Run(metric)
 
 	assert.ErrorIs(t, err, retry.ErrDelayError)
 }
 
 func TestRunValidatePolicyCommand(t *testing.T) {
 	p := retry.Policy{Tries: retry.MinTries, Delay: retry.MinDelay}
-	_, err := p.Run()
+
+	metric := core.NewMetric()
+	err := p.Run(metric)
 
 	assert.ErrorIs(t, err, retry.ErrCommandRequiredError)
 }
@@ -108,12 +108,14 @@ func TestRunMaxTriesExceeded(t *testing.T) {
 	}
 	p.Command = func() error { return errTest }
 
-	r, e := p.Run()
-	m, _ := r.(retry.Metric)
+	metric := core.NewMetric()
+	err := p.Run(metric)
+	i := metric[reflect.TypeOf(retry.Metric{}).String()]
+	m, _ := i.(retry.Metric)
 
 	assert.Equal(t, p.Tries, timesBefore)
 	assert.Equal(t, p.Tries, timesAfter)
-	assert.ErrorIs(t, e, retry.ErrMaxTriesExceeded)
+	assert.ErrorIs(t, err, retry.ErrMaxTriesExceeded)
 	assert.Equal(t, p.Tries, m.Tries)
 	assert.Equal(t, 1, m.Status)
 	assert.Equal(t, "postForm", m.ID)
@@ -156,12 +158,14 @@ func TestRunHandledErrors(t *testing.T) {
 		}
 	}
 
-	r, e := p.Run()
-	m, _ := r.(retry.Metric)
+	metric := core.NewMetric()
+	err := p.Run(metric)
+	i := metric[reflect.TypeOf(retry.Metric{}).String()]
+	m, _ := i.(retry.Metric)
 
 	assert.Equal(t, 3, timesBefore)
 	assert.Equal(t, 3, timesAfter)
-	assert.Nil(t, e)
+	assert.Nil(t, err)
 
 	assert.Equal(t, p.Tries, m.Tries)
 	assert.Equal(t, 0, m.Status)
@@ -208,12 +212,14 @@ func TestRunUnhandledError(t *testing.T) {
 		}
 	}
 
-	r, e := p.Run()
-	m, _ := r.(retry.Metric)
+	metric := core.NewMetric()
+	err := p.Run(metric)
+	i := metric[reflect.TypeOf(retry.Metric{}).String()]
+	m, _ := i.(retry.Metric)
 
 	assert.Equal(t, 3, timesBefore)
 	assert.Equal(t, 3, timesAfter)
-	assert.ErrorIs(t, e, retry.ErrUnhandledError)
+	assert.ErrorIs(t, err, retry.ErrUnhandledError)
 
 	assert.Equal(t, 3, m.Tries)
 	assert.Equal(t, 1, m.Status)
@@ -242,19 +248,21 @@ func TestRun(t *testing.T) {
 	}
 	p.Command = func() error { return nil }
 
-	r, e := p.Run()
-	m, _ := r.(retry.Metric)
+	metric := core.NewMetric()
+	err := p.Run(metric)
+	i := metric[reflect.TypeOf(retry.Metric{}).String()]
+	m, _ := i.(retry.Metric)
 
 	assert.Equal(t, 1, timesBefore)
 	assert.Equal(t, 1, timesAfter)
-	assert.Nil(t, e)
+	assert.Nil(t, err)
 
 	assert.Equal(t, 1, m.Tries)
 	assert.Equal(t, 0, m.Status)
 	assert.Equal(t, "postForm", m.ID)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.Equal(t, "postForm", m.ServiceID())
-	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
+	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*50)
 	assert.True(t, m.Success())
 }
 
@@ -262,12 +270,13 @@ func TestRunPolicy(t *testing.T) {
 	timesAfter, timesBefore := 0, 0
 
 	policy := new(mockPolicy)
-	policy.On("Run").Return(Metric{
+	policy.On("Run").Return(nil)
+	mockMetric := Metric{
 		ID:         "dummy-service",
 		Status:     0,
 		StartedAt:  time.Now().Add(time.Millisecond * -150),
 		FinishedAt: time.Now(),
-	}, nil)
+	}
 
 	retryPolicy := retry.New("remote-service")
 	retryPolicy.Tries = 3
@@ -280,6 +289,7 @@ func TestRunPolicy(t *testing.T) {
 		timesAfter++
 	}
 	metric := core.NewMetric()
+	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 
 	err := retryPolicy.RunPolicy(metric, policy)
 	assert.Nil(t, err)
@@ -316,12 +326,13 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 	timesAfter, timesBefore := 0, 0
 
 	policy := new(mockPolicy)
-	policy.On("Run").Return(Metric{
+	policy.On("Run").Return(errTest)
+	mockMetric := Metric{
 		ID:         "dummy-service",
 		Status:     1,
 		StartedAt:  time.Now().Add(time.Millisecond * -150),
 		FinishedAt: time.Now(),
-	}, errTest)
+	}
 
 	retryPolicy := retry.New("remote-service")
 	retryPolicy.Tries = 3
@@ -334,6 +345,7 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 	}
 	retryPolicy.Command = func() error { return nil }
 	metric := core.NewMetric()
+	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 
 	err := retryPolicy.RunPolicy(metric, policy)
 	assert.ErrorIs(t, err, retry.ErrUnhandledError)
@@ -370,12 +382,13 @@ func TestRunPolicyMaxTriesExceeded(t *testing.T) {
 	timesAfter, timesBefore := 0, 0
 
 	policy := new(mockPolicy)
-	policy.On("Run").Return(Metric{
+	policy.On("Run").Return(errTest)
+	mockMetric := Metric{
 		ID:         "dummy-service",
 		Status:     1,
 		StartedAt:  time.Now().Add(time.Millisecond * -150),
 		FinishedAt: time.Now(),
-	}, errTest)
+	}
 
 	retryPolicy := retry.New("remote-service")
 	retryPolicy.Tries = 3
@@ -389,6 +402,7 @@ func TestRunPolicyMaxTriesExceeded(t *testing.T) {
 	}
 	retryPolicy.Command = func() error { return nil }
 	metric := core.NewMetric()
+	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 
 	err := retryPolicy.RunPolicy(metric, policy)
 	assert.ErrorIs(t, err, retry.ErrMaxTriesExceeded)

@@ -27,22 +27,26 @@ func Decorate(command core.Command) Decorator {
 	return Decoration{Supplier: command}
 }
 
-func (p Decoration) WithRetry(policy retry.Policy) Decorator {
-	p.Retry = policy
-	return p
+func (d Decoration) WithRetry(policy retry.Policy) Decorator {
+	d.Retry = policy
+	return d
 }
 
-func (p Decoration) WithTimeout(policy timeout.Policy) Decorator {
-	p.Timeout = policy
-	return p
+func (d Decoration) WithTimeout(policy timeout.Policy) Decorator {
+	d.Timeout = policy
+	return d
 }
 
-func (p Decoration) WithFallback(policy []fallback.Policy) Decorator {
-	p.Fallback = policy
-	return p
+func (d Decoration) WithFallback(policy []fallback.Policy) Decorator {
+	d.Fallback = policy
+	return d
 }
 
-func (p Decoration) WithCircuitBreaker(policy circuitbreaker.Policy) Decorator {
-	p.CircuitBreaker = policy
-	return p
+func (d Decoration) WithCircuitBreaker(policy circuitbreaker.Policy) Decorator {
+	d.CircuitBreaker = policy
+	return d
 }
+
+/*func (d Decoration) Execute() {
+	d.CircuitBreaker.RunPolicy(nil, d.Retry.RunPolicy(nil, d.Timeout.RunPolicy(nil, d.Supplier)))
+}*/

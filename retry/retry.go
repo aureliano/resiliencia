@@ -56,23 +56,19 @@ func New(serviceID string) Policy {
 	}
 }
 
-func (p Policy) Run() (core.MetricRecorder, error) {
+func (p Policy) Run(metric core.Metric) error {
 	if p.Command == nil {
-		return nil, ErrCommandRequiredError
+		return ErrCommandRequiredError
 	}
 
-	metric := core.NewMetric()
-	err := runPolicy(metric, p, func() (core.MetricRecorder, error) { return nil, p.Command() })
-	m := metric[reflect.TypeOf(Metric{}).String()]
-
-	return m, err
+	return runPolicy(metric, p, func(core.Metric) error { return p.Command() })
 }
 
 func (p Policy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
 	return runPolicy(metric, p, supplier.Run)
 }
 
-func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecorder, error)) error {
+func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error) error {
 	if err := validate(parent); err != nil {
 		return err
 	}
@@ -104,10 +100,7 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 		}
 
 		exec.StartedAt = time.Now()
-		mr, err := yield()
-		if mr != nil {
-			metric[reflect.TypeOf(mr).String()] = mr
-		}
+		err := yield(metric)
 
 		exec.Error = err
 		exec.FinishedAt = time.Now()

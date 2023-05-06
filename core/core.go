@@ -8,7 +8,7 @@ import (
 type Command func() error
 
 type PolicySupplier interface {
-	Run() (MetricRecorder, error)
+	Run(metric Metric) error
 	RunPolicy(metric Metric, supplier PolicySupplier) error
 }
 

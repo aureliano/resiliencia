@@ -14,20 +14,14 @@ import (
 
 type mockPolicy struct{ mock.Mock }
 
-func (p *mockPolicy) Run() (core.MetricRecorder, error) {
+func (p *mockPolicy) Run(_ core.Metric) error {
 	args := p.Called()
-	metric := args.Get(0)
-
-	if metric != nil {
-		return metric.(core.MetricRecorder), args.Error(1)
-	}
-
-	return nil, args.Error(1)
+	return args.Error(0)
 }
 
 func (p *mockPolicy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
 	args := p.Called(metric, supplier)
-	return args.Error(1)
+	return args.Error(0)
 }
 
 type Metric struct {
@@ -72,7 +66,9 @@ func TestNew(t *testing.T) {
 func TestRunValidatePolicyFallBackHandler(t *testing.T) {
 	p := fallback.New("service-id")
 	p.Command = func() error { return nil }
-	_, err := p.Run()
+
+	metric := core.NewMetric()
+	err := p.Run(metric)
 
 	assert.ErrorIs(t, err, fallback.ErrNoFallBackHandler)
 }
@@ -81,7 +77,8 @@ func TestRunValidatePolicyCommand(t *testing.T) {
 	p := fallback.New("service-id")
 	p.FallBackHandler = func(err error) {}
 
-	_, err := p.Run()
+	metric := core.NewMetric()
+	err := p.Run(metric)
 
 	assert.ErrorIs(t, err, fallback.ErrCommandRequiredError)
 }
@@ -96,8 +93,10 @@ func TestRunNoFallback(t *testing.T) {
 	p.AfterFallBack = func(p fallback.Policy, err error) {}
 	p.Command = func() error { return nil }
 
-	r, _ := p.Run()
-	m, _ := r.(fallback.Metric)
+	metric := core.NewMetric()
+	_ = p.Run(metric)
+	i := metric[reflect.TypeOf(fallback.Metric{}).String()]
+	m, _ := i.(fallback.Metric)
 
 	assert.False(t, fallbackCalled)
 
@@ -124,8 +123,10 @@ func TestRunHandleError(t *testing.T) {
 	p.AfterFallBack = func(p fallback.Policy, err error) {}
 	p.Command = func() error { return errTest2 }
 
-	r, err := p.Run()
-	m, _ := r.(fallback.Metric)
+	metric := core.NewMetric()
+	err := p.Run(metric)
+	i := metric[reflect.TypeOf(fallback.Metric{}).String()]
+	m, _ := i.(fallback.Metric)
 
 	assert.Nil(t, err)
 	assert.True(t, fallbackCalled)
@@ -154,8 +155,10 @@ func TestRunUnhandledError(t *testing.T) {
 	p.AfterFallBack = func(p fallback.Policy, err error) {}
 	p.Command = func() error { return errTest3 }
 
-	r, err := p.Run()
-	m, _ := r.(fallback.Metric)
+	metric := core.NewMetric()
+	err := p.Run(metric)
+	i := metric[reflect.TypeOf(fallback.Metric{}).String()]
+	m, _ := i.(fallback.Metric)
 
 	assert.ErrorIs(t, fallback.ErrUnhandledError, err)
 	assert.False(t, fallbackCalled)
@@ -176,14 +179,14 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 	errTest3 := errors.New("error test 3")
 
 	policy := new(mockPolicy)
-
-	policy.On("Run").Return(Metric{
+	policy.On("Run").Return(errTest3)
+	mockMetric := Metric{
 		ID:         "dummy-service",
 		Status:     1,
 		StartedAt:  time.Now().Add(time.Millisecond * -150),
 		FinishedAt: time.Now(),
 		Error:      errTest3,
-	}, errTest3)
+	}
 
 	fallbackPolicy := fallback.New("service-id")
 	fallbackPolicy.Errors = []error{errTest1, errTest2}
@@ -195,6 +198,7 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 	fallbackPolicy.Command = func() error { return errTest3 }
 
 	metric := core.NewMetric()
+	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 	err := fallbackPolicy.RunPolicy(metric, policy)
 
 	r := metric[reflect.TypeOf(Metric{}).String()]
@@ -229,14 +233,14 @@ func TestRunPolicyHandledError(t *testing.T) {
 	errTest2 := errors.New("error test 2")
 
 	policy := new(mockPolicy)
-
-	policy.On("Run").Return(Metric{
+	policy.On("Run").Return(errTest2)
+	mockMetric := Metric{
 		ID:         "dummy-service",
 		Status:     1,
 		StartedAt:  time.Now().Add(time.Millisecond * -150),
 		FinishedAt: time.Now(),
 		Error:      errTest2,
-	}, errTest2)
+	}
 
 	fallbackPolicy := fallback.New("service-id")
 	fallbackPolicy.Errors = []error{errTest1, errTest2}
@@ -248,6 +252,7 @@ func TestRunPolicyHandledError(t *testing.T) {
 	fallbackPolicy.Command = func() error { return nil }
 
 	metric := core.NewMetric()
+	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 	err := fallbackPolicy.RunPolicy(metric, policy)
 
 	r := metric[reflect.TypeOf(Metric{}).String()]
@@ -280,13 +285,13 @@ func TestRunPolicyNoFallback(t *testing.T) {
 	fallbackCalled := false
 
 	policy := new(mockPolicy)
-
-	policy.On("Run").Return(Metric{
+	policy.On("Run").Return(nil)
+	mockMetric := Metric{
 		ID:         "dummy-service",
 		Status:     0,
 		StartedAt:  time.Now().Add(time.Millisecond * -150),
 		FinishedAt: time.Now(),
-	}, nil)
+	}
 
 	fallbackPolicy := fallback.New("service-id")
 	fallbackPolicy.FallBackHandler = func(err error) {
@@ -297,6 +302,7 @@ func TestRunPolicyNoFallback(t *testing.T) {
 	fallbackPolicy.Command = func() error { return nil }
 
 	metric := core.NewMetric()
+	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 	err := fallbackPolicy.RunPolicy(metric, policy)
 
 	r := metric[reflect.TypeOf(Metric{}).String()]

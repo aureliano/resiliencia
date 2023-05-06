@@ -40,23 +40,19 @@ func New(serviceID string) Policy {
 	}
 }
 
-func (p Policy) Run() (core.MetricRecorder, error) {
+func (p Policy) Run(metric core.Metric) error {
 	if p.Command == nil {
-		return nil, ErrCommandRequiredError
+		return ErrCommandRequiredError
 	}
 
-	metric := core.NewMetric()
-	err := runPolicy(metric, p, func() (core.MetricRecorder, error) { return nil, p.Command() })
-	m := metric[reflect.TypeOf(Metric{}).String()]
-
-	return m, err
+	return runPolicy(metric, p, func(core.Metric) error { return p.Command() })
 }
 
 func (p Policy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
 	return runPolicy(metric, p, supplier.Run)
 }
 
-func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecorder, error)) error {
+func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error) error {
 	if err := validate(parent); err != nil {
 		return err
 	}
@@ -66,21 +62,15 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 		parent.BeforeTimeout(parent)
 	}
 
-	cmr := make(chan core.MetricRecorder)
 	cerr := make(chan error)
 	c := make(chan string)
-	go executeCommand(cmr, cerr, c, yield)
+	go executeCommand(cerr, c, metric, yield)
 
-	var mr core.MetricRecorder
 	var merror error
 
 waiting:
 	for {
 		select {
-		case mr = <-cmr:
-			if mr != nil {
-				metric[reflect.TypeOf(mr).String()] = mr
-			}
 		case e := <-cerr:
 			if e != nil {
 				m.Error = e
@@ -108,19 +98,14 @@ waiting:
 	return merror
 }
 
-func executeCommand(cmr chan core.MetricRecorder, cerr chan error, c chan string,
-	yield func() (core.MetricRecorder, error)) {
+func executeCommand(cerr chan error, c chan string, metric core.Metric,
+	yield func(core.Metric) error) {
 	c <- "start"
-	lmr, lerr := yield()
-
-	if lmr != nil {
-		cmr <- lmr
-	}
+	lerr := yield(metric)
 
 	if lerr != nil {
 		cerr <- lerr
 	}
-	close(cmr)
 	close(cerr)
 
 	c <- "done"

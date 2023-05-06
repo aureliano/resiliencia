@@ -15,20 +15,14 @@ import (
 
 type mockPolicy struct{ mock.Mock }
 
-func (p *mockPolicy) Run() (core.MetricRecorder, error) {
+func (p *mockPolicy) Run(_ core.Metric) error {
 	args := p.Called()
-	metric := args.Get(0)
-
-	if metric != nil {
-		return metric.(core.MetricRecorder), args.Error(1)
-	}
-
-	return nil, args.Error(1)
+	return args.Error(0)
 }
 
 func (p *mockPolicy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
 	args := p.Called(metric, supplier)
-	return args.Error(1)
+	return args.Error(0)
 }
 
 type Metric struct {
@@ -75,7 +69,9 @@ func TestRunValidatePolicyTimeout(t *testing.T) {
 	p := timeout.New("remote-service")
 	p.Timeout = -1
 	p.Command = func() error { return nil }
-	_, err := p.Run()
+
+	metric := core.NewMetric()
+	err := p.Run(metric)
 
 	assert.ErrorIs(t, err, timeout.ErrTimeoutError)
 }
@@ -84,7 +80,8 @@ func TestRunValidatePolicyCommand(t *testing.T) {
 	p := timeout.New("remote-service")
 	p.Timeout = timeout.MinTimeout
 
-	_, err := p.Run()
+	metric := core.NewMetric()
+	err := p.Run(metric)
 
 	assert.ErrorIs(t, err, timeout.ErrCommandRequiredError)
 }
@@ -96,8 +93,10 @@ func TestRun(t *testing.T) {
 	p.AfterTimeout = func(p timeout.Policy, err error) {}
 	p.Command = func() error { return nil }
 
-	r, err := p.Run()
-	m, _ := r.(timeout.Metric)
+	metric := core.NewMetric()
+	err := p.Run(metric)
+	i := metric[reflect.TypeOf(timeout.Metric{}).String()]
+	m, _ := i.(timeout.Metric)
 
 	assert.Nil(t, err)
 
@@ -118,8 +117,10 @@ func TestRunWithUnknownError(t *testing.T) {
 	p.AfterTimeout = func(p timeout.Policy, err error) {}
 	p.Command = func() error { return errTest }
 
-	r, err := p.Run()
-	m, _ := r.(timeout.Metric)
+	metric := core.NewMetric()
+	err := p.Run(metric)
+	i := metric[reflect.TypeOf(timeout.Metric{}).String()]
+	m, _ := i.(timeout.Metric)
 
 	assert.Nil(t, err)
 
@@ -142,8 +143,10 @@ func TestRunTimeout(t *testing.T) {
 		return nil
 	}
 
-	r, err := p.Run()
-	m, _ := r.(timeout.Metric)
+	metric := core.NewMetric()
+	err := p.Run(metric)
+	i := metric[reflect.TypeOf(timeout.Metric{}).String()]
+	m, _ := i.(timeout.Metric)
 
 	assert.ErrorIs(t, timeout.ErrExecutionTimedOutError, err)
 
@@ -158,17 +161,19 @@ func TestRunTimeout(t *testing.T) {
 
 func TestRunPolicySuccess(t *testing.T) {
 	policy := new(mockPolicy)
-	policy.On("Run").Return(Metric{
+	policy.On("Run").Return(nil)
+	mockMetric := Metric{
 		ID:         "dummy-service",
 		Status:     0,
 		StartedAt:  time.Now().Add(time.Millisecond * -150),
 		FinishedAt: time.Now(),
-	}, nil)
+	}
 
 	timeoutPolicy := timeout.New("remote-service")
 	timeoutPolicy.Timeout = time.Millisecond * 100
 	timeoutPolicy.Command = func() error { return nil }
 	metric := core.NewMetric()
+	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 
 	err := timeoutPolicy.RunPolicy(metric, policy)
 	assert.Nil(t, err)
@@ -200,17 +205,19 @@ func TestRunPolicyChildFail(t *testing.T) {
 	errTest := fmt.Errorf("child error")
 
 	policy := new(mockPolicy)
-	policy.On("Run").Return(Metric{
+	policy.On("Run").Return(errTest)
+	mockMetric := Metric{
 		ID:         "dummy-service",
 		Status:     1,
 		StartedAt:  time.Now().Add(time.Millisecond * -150),
 		FinishedAt: time.Now(),
-	}, errTest)
+	}
 
 	timeoutPolicy := timeout.New("remote-service")
 	timeoutPolicy.Timeout = time.Millisecond * 10
 	timeoutPolicy.Command = func() error { return nil }
 	metric := core.NewMetric()
+	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 
 	err := timeoutPolicy.RunPolicy(metric, policy)
 	assert.Nil(t, err)
@@ -240,7 +247,7 @@ func TestRunPolicyChildFail(t *testing.T) {
 
 func TestRunPolicyTimeout(t *testing.T) {
 	policy := new(mockPolicy)
-	policy.On("Run").After(time.Millisecond*15).Return(nil, nil)
+	policy.On("Run").After(time.Millisecond * 15).Return(nil)
 
 	timeoutPolicy := timeout.New("remote-service")
 	timeoutPolicy.Timeout = time.Millisecond * 10

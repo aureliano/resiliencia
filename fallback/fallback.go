@@ -36,6 +36,10 @@ func New(serviceID string) Policy {
 }
 
 func (p Policy) Run() (core.MetricRecorder, error) {
+	if p.Command == nil {
+		return nil, ErrCommandRequiredError
+	}
+
 	metric := core.NewMetric()
 	err := runPolicy(metric, p, func() (core.MetricRecorder, error) { return nil, p.Command() })
 	m := metric[reflect.TypeOf(Metric{}).String()]
@@ -88,14 +92,11 @@ func handledError(p Policy, err error) bool {
 }
 
 func validate(p Policy) error {
-	switch {
-	case p.FallBackHandler == nil:
+	if p.FallBackHandler == nil {
 		return ErrNoFallBackHandler
-	case p.Command == nil:
-		return ErrCommandRequiredError
-	default:
-		return nil
 	}
+
+	return nil
 }
 
 func (m Metric) ServiceID() string {

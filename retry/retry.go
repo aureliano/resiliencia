@@ -57,6 +57,10 @@ func New(serviceID string) Policy {
 }
 
 func (p Policy) Run() (core.MetricRecorder, error) {
+	if p.Command == nil {
+		return nil, ErrCommandRequiredError
+	}
+
 	metric := core.NewMetric()
 	err := runPolicy(metric, p, func() (core.MetricRecorder, error) { return nil, p.Command() })
 	m := metric[reflect.TypeOf(Metric{}).String()]
@@ -172,8 +176,6 @@ func validate(p Policy) error {
 		return ErrDelayError
 	case p.Tries < MinTries:
 		return ErrTriesError
-	case p.Command == nil:
-		return ErrCommandRequiredError
 	default:
 		return nil
 	}

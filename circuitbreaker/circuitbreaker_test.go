@@ -256,7 +256,7 @@ func TestRunHandledErrors(t *testing.T) {
 
 	p := circuitbreaker.Policy{
 		ServiceID:       "backend-service-name-3",
-		ThresholdErrors: 1,
+		ThresholdErrors: 3,
 		ResetTimeout:    time.Millisecond * 300,
 		Errors:          []error{errTest1, errTest2},
 		AfterCircuitBreaker: func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {
@@ -301,7 +301,7 @@ func TestRunUnhandledError(t *testing.T) {
 
 	p := circuitbreaker.Policy{
 		ServiceID:       "backend-service-name-4",
-		ThresholdErrors: 1,
+		ThresholdErrors: 3,
 		ResetTimeout:    time.Millisecond * 300,
 		Errors:          []error{errTest1},
 		AfterCircuitBreaker: func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {
@@ -524,7 +524,7 @@ func TestRunPolicyHandledErrors(t *testing.T) {
 
 	cbPolicy := circuitbreaker.Policy{
 		ServiceID:            "backend-service-name-7",
-		ThresholdErrors:      1,
+		ThresholdErrors:      3,
 		ResetTimeout:         time.Millisecond * 300,
 		BeforeCircuitBreaker: func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
 		OnOpenCircuit:        func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
@@ -609,7 +609,7 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 
 	cbPolicy := circuitbreaker.Policy{
 		ServiceID:            "backend-service-name-8",
-		ThresholdErrors:      1,
+		ThresholdErrors:      3,
 		ResetTimeout:         time.Millisecond * 300,
 		BeforeCircuitBreaker: func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
 		OnOpenCircuit:        func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},

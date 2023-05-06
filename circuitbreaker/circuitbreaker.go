@@ -166,8 +166,13 @@ func setInitialState(p Policy, cb *CircuitBreaker) {
 }
 
 func setPostState(p Policy, cb *CircuitBreaker, err error) {
-	if err != nil && !handledError(p, err) {
-		openCircuit(p, cb, err)
+	if err != nil {
+		expectedError := handledError(p, err)
+		cb.ErrorCount++
+
+		if cb.ErrorCount >= p.ThresholdErrors || !expectedError {
+			openCircuit(p, cb, err)
+		}
 	} else if cb.State == HalfOpenState {
 		closeCircuit(p, cb)
 	}
@@ -176,7 +181,6 @@ func setPostState(p Policy, cb *CircuitBreaker, err error) {
 func openCircuit(p Policy, cb *CircuitBreaker, err error) {
 	cb.State = OpenState
 	cb.TimeErrorOcurred = time.Now()
-	cb.ErrorCount++
 
 	if p.OnOpenCircuit != nil {
 		p.OnOpenCircuit(p, cb, err)

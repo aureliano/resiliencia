@@ -122,17 +122,22 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 
 	if cb.State == OpenState {
 		m.Status = 1
+		m.Error = ErrCircuitIsOpen
 		m.FinishedAt = time.Now()
-		metric[reflect.TypeOf(m).String()] = &m
+		metric[reflect.TypeOf(m).String()] = m
 
 		return ErrCircuitIsOpen
 	}
 
 	mr, err := yield()
 	if mr != nil {
-		metric[reflect.TypeOf(&mr).String()] = mr
+		metric[reflect.TypeOf(mr).String()] = mr
 	}
-	m.Error = err
+
+	if err != nil {
+		m.Error = err
+		m.Status = 1
+	}
 
 	setPostState(parent, cb, err)
 	m.State = cb.State
@@ -142,7 +147,7 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 		parent.AfterCircuitBreaker(parent, cb, err)
 	}
 	m.FinishedAt = time.Now()
-	metric[reflect.TypeOf(m).String()] = &m
+	metric[reflect.TypeOf(m).String()] = m
 
 	return nil
 }

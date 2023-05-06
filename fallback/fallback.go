@@ -59,9 +59,8 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 
 	mr, err := yield()
 	if mr != nil {
-		metric[reflect.TypeOf(&mr).String()] = mr
+		metric[reflect.TypeOf(mr).String()] = mr
 	}
-	m.Error = err
 
 	if parent.AfterFallBack != nil {
 		parent.AfterFallBack(parent, err)
@@ -70,7 +69,9 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 
 	if err != nil && !handledError(parent, err) {
 		m.Status = 1
+		m.Error = ErrUnhandledError
 		metric[reflect.TypeOf(m).String()] = m
+
 		return ErrUnhandledError
 	}
 

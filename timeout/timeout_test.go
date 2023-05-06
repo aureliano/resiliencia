@@ -124,12 +124,12 @@ func TestRunWithUnknownError(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Equal(t, "remote-service", m.ID)
-	assert.Equal(t, 0, m.Status)
+	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.ErrorIs(t, m.Error, errTest)
 	assert.Equal(t, "remote-service", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
-	assert.True(t, m.Success())
+	assert.False(t, m.Success())
 }
 
 func TestRunTimeout(t *testing.T) {
@@ -231,11 +231,11 @@ func TestRunPolicyChildFail(t *testing.T) {
 	timeoutMetric, _ := r.(timeout.Metric)
 
 	assert.Equal(t, "remote-service", timeoutMetric.ID)
-	assert.Equal(t, 0, timeoutMetric.Status)
+	assert.Equal(t, 1, timeoutMetric.Status)
 	assert.Less(t, timeoutMetric.StartedAt, timeoutMetric.FinishedAt)
 	assert.ErrorIs(t, timeoutMetric.Error, errTest)
 	assert.Equal(t, "remote-service", timeoutMetric.ServiceID())
-	assert.True(t, timeoutMetric.Success())
+	assert.False(t, timeoutMetric.Success())
 }
 
 func TestRunPolicyTimeout(t *testing.T) {

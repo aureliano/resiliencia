@@ -12,7 +12,7 @@ import (
 var (
 	ErrDelayError           = fmt.Errorf("delay must be >= %d", MinDelay)
 	ErrTriesError           = fmt.Errorf("tries must be >= %d", MinTries)
-	ErrExceededTries        = errors.New("max tries reached")
+	ErrMaxTriesExceeded     = errors.New("max tries reached")
 	ErrUnhandledError       = errors.New("unhandled error")
 	ErrCommandRequiredError = errors.New("command is required")
 )
@@ -33,6 +33,7 @@ type Metric struct {
 	Status     int
 	StartedAt  time.Time
 	FinishedAt time.Time
+	Error      error
 	Executions []struct {
 		Iteration  int
 		StartedAt  time.Time
@@ -116,6 +117,7 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 
 		if err != nil && !handledError(parent, err) {
 			m.Status = 1
+			m.Error = ErrUnhandledError
 			metric[reflect.TypeOf(m).String()] = m
 
 			return ErrUnhandledError
@@ -133,9 +135,10 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 
 	if !done {
 		m.Status = 1
+		m.Error = ErrMaxTriesExceeded
 		metric[reflect.TypeOf(m).String()] = m
 
-		return ErrExceededTries
+		return ErrMaxTriesExceeded
 	}
 	metric[reflect.TypeOf(m).String()] = m
 

@@ -68,7 +68,6 @@ func runPolicy(metric core.Metric, parent Policy, yield func() (core.MetricRecor
 	go executeCommand(cmr, cerr, c, yield)
 
 	var mr core.MetricRecorder
-	var cmdErr error
 	var merror error
 
 waiting:
@@ -80,8 +79,8 @@ waiting:
 			}
 		case e := <-cerr:
 			if e != nil {
-				cmdErr = e
 				m.Error = e
+				m.Status = 1
 			}
 		case str := <-c:
 			if str == "done" {
@@ -97,7 +96,7 @@ waiting:
 	}
 
 	if parent.AfterTimeout != nil {
-		parent.AfterTimeout(parent, cmdErr)
+		parent.AfterTimeout(parent, m.Error)
 	}
 	m.FinishedAt = time.Now()
 	metric[reflect.TypeOf(m).String()] = m

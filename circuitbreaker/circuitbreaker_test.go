@@ -10,7 +10,46 @@ import (
 	"github.com/aureliano/resiliencia/circuitbreaker"
 	"github.com/aureliano/resiliencia/core"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
+
+type mockPolicy struct{ mock.Mock }
+
+func (p *mockPolicy) Run() (core.MetricRecorder, error) {
+	args := p.Called()
+	metric := args.Get(0)
+
+	if metric != nil {
+		return metric.(core.MetricRecorder), args.Error(1)
+	}
+
+	return nil, args.Error(1)
+}
+
+func (p *mockPolicy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
+	args := p.Called(metric, supplier)
+	return args.Error(1)
+}
+
+type Metric struct {
+	ID         string
+	Status     int
+	StartedAt  time.Time
+	FinishedAt time.Time
+	Error      error
+}
+
+func (m Metric) ServiceID() string {
+	return m.ID
+}
+
+func (m Metric) PolicyDuration() time.Duration {
+	return m.FinishedAt.Sub(m.StartedAt)
+}
+
+func (m Metric) Success() bool {
+	return m.Status == 0
+}
 
 func TestPolicyImplementsPolicySupplier(t *testing.T) {
 	p := circuitbreaker.New("service-name")
@@ -121,27 +160,27 @@ func TestRunCircuitIsOpen(t *testing.T) {
 	p.Command = func() error { return errTest }
 
 	r, err := p.Run()
-	m, _ := r.(*circuitbreaker.Metric)
+	m, _ := r.(circuitbreaker.Metric)
 	assert.Nil(t, err)
 
 	assert.Equal(t, "backend-service-name-1", m.ID)
-	assert.Equal(t, 0, m.Status)
+	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.ErrorIs(t, m.Error, errTest)
 	assert.EqualValues(t, circuitbreaker.OpenState, m.State)
 	assert.Equal(t, 1, m.ErrorCount)
 	assert.Equal(t, "backend-service-name-1", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
-	assert.True(t, m.Success())
+	assert.False(t, m.Success())
 
 	p.Command = func() error { return nil }
 	r, err = p.Run()
-	m, _ = r.(*circuitbreaker.Metric)
+	m, _ = r.(circuitbreaker.Metric)
 	assert.ErrorIs(t, err, circuitbreaker.ErrCircuitIsOpen)
 
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Nil(t, m.Error)
+	assert.ErrorIs(t, m.Error, circuitbreaker.ErrCircuitIsOpen)
 	assert.EqualValues(t, circuitbreaker.OpenState, m.State)
 	assert.Equal(t, 1, m.ErrorCount)
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
@@ -167,28 +206,28 @@ func TestRunCircuitHalfOpenSetToClosed(t *testing.T) {
 
 	p.Command = func() error { return errTest }
 	r, err := p.Run()
-	m, _ := r.(*circuitbreaker.Metric)
+	m, _ := r.(circuitbreaker.Metric)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.OpenState, state)
 
 	assert.Equal(t, "backend-service-name-2", m.ID)
-	assert.Equal(t, 0, m.Status)
+	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.ErrorIs(t, m.Error, errTest)
 	assert.Equal(t, "backend-service-name-2", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
-	assert.True(t, m.Success())
+	assert.False(t, m.Success())
 
 	p.Command = func() error { return nil }
 	r, err = p.Run()
-	m, _ = r.(*circuitbreaker.Metric)
+	m, _ = r.(circuitbreaker.Metric)
 	assert.ErrorIs(t, err, circuitbreaker.ErrCircuitIsOpen)
 	assert.EqualValues(t, circuitbreaker.OpenState, state)
 
 	assert.Equal(t, "backend-service-name-2", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Nil(t, m.Error)
+	assert.ErrorIs(t, m.Error, circuitbreaker.ErrCircuitIsOpen)
 	assert.Equal(t, "backend-service-name-2", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
@@ -196,7 +235,7 @@ func TestRunCircuitHalfOpenSetToClosed(t *testing.T) {
 	time.Sleep(time.Millisecond * 300)
 	p.Command = func() error { return nil }
 	r, err = p.Run()
-	m, _ = r.(*circuitbreaker.Metric)
+	m, _ = r.(circuitbreaker.Metric)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
 
@@ -227,31 +266,31 @@ func TestRunHandledErrors(t *testing.T) {
 
 	p.Command = func() error { return errTest1 }
 	r, err := p.Run()
-	m, _ := r.(*circuitbreaker.Metric)
+	m, _ := r.(circuitbreaker.Metric)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
 
 	assert.Equal(t, "backend-service-name-3", m.ID)
-	assert.Equal(t, 0, m.Status)
+	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.ErrorIs(t, m.Error, errTest1)
 	assert.Equal(t, "backend-service-name-3", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
-	assert.True(t, m.Success())
+	assert.False(t, m.Success())
 
 	p.Command = func() error { return errTest2 }
 	r, err = p.Run()
-	m, _ = r.(*circuitbreaker.Metric)
+	m, _ = r.(circuitbreaker.Metric)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
 
 	assert.Equal(t, "backend-service-name-3", m.ID)
-	assert.Equal(t, 0, m.Status)
+	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.ErrorIs(t, m.Error, errTest2)
 	assert.Equal(t, "backend-service-name-3", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
-	assert.True(t, m.Success())
+	assert.False(t, m.Success())
 }
 
 func TestRunUnhandledError(t *testing.T) {
@@ -272,63 +311,366 @@ func TestRunUnhandledError(t *testing.T) {
 
 	p.Command = func() error { return errTest1 }
 	r, err := p.Run()
-	m, _ := r.(*circuitbreaker.Metric)
+	m, _ := r.(circuitbreaker.Metric)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
 
 	assert.Equal(t, "backend-service-name-4", m.ID)
-	assert.Equal(t, 0, m.Status)
+	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.ErrorIs(t, m.Error, errTest1)
 	assert.Equal(t, "backend-service-name-4", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
-	assert.True(t, m.Success())
+	assert.False(t, m.Success())
 
 	p.Command = func() error { return errTest2 }
 	r, err = p.Run()
-	m, _ = r.(*circuitbreaker.Metric)
+	m, _ = r.(circuitbreaker.Metric)
 	assert.Nil(t, err)
 	assert.EqualValues(t, circuitbreaker.OpenState, state)
 
 	assert.Equal(t, "backend-service-name-4", m.ID)
-	assert.Equal(t, 0, m.Status)
+	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
 	assert.ErrorIs(t, m.Error, errTest2)
 	assert.Equal(t, "backend-service-name-4", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
-	assert.True(t, m.Success())
+	assert.False(t, m.Success())
 }
 
-func TestRunPolicy(t *testing.T) {
-	var state circuitbreaker.CircuitState
+func TestRunPolicyCircuitIsOpen(t *testing.T) {
+	errTest := errors.New("err test")
 
-	errTest1 := errors.New("error test 1")
-	errTest2 := errors.New("error test 2")
+	policy := new(mockPolicy)
 
-	p := circuitbreaker.Policy{
-		ServiceID:       "backend-service-name-5",
-		ThresholdErrors: 1,
-		ResetTimeout:    time.Millisecond * 300,
-		Errors:          []error{errTest1, errTest2},
-		AfterCircuitBreaker: func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {
-			state = status.State
-		},
+	policy.On("Run").Return(Metric{
+		ID:         "dummy-service",
+		Status:     1,
+		StartedAt:  time.Now().Add(time.Millisecond * -150),
+		FinishedAt: time.Now(),
+	}, errTest)
+
+	cbPolicy := circuitbreaker.Policy{
+		ServiceID:            "backend-service-name-5",
+		ThresholdErrors:      1,
+		ResetTimeout:         time.Second * 1,
+		BeforeCircuitBreaker: func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
+		OnOpenCircuit:        func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
+		OnHalfOpenCircuit:    func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
+		OnClosedCircuit:      func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
+		AfterCircuitBreaker:  func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
+	}
+	cbPolicy.Command = func() error { return nil }
+
+	metric := core.NewMetric()
+	err := cbPolicy.RunPolicy(metric, policy)
+	assert.Nil(t, err)
+
+	r := metric[reflect.TypeOf(Metric{}).String()]
+	childMetric, _ := r.(Metric)
+
+	assert.Equal(t, "dummy-service", childMetric.ID)
+	assert.Equal(t, 1, childMetric.Status)
+	assert.Less(t, childMetric.StartedAt, childMetric.FinishedAt)
+	assert.Equal(t, "dummy-service", childMetric.ServiceID())
+	assert.Greater(t, childMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, childMetric.Success())
+
+	r = metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
+	cbMetric, _ := r.(circuitbreaker.Metric)
+
+	assert.Equal(t, "backend-service-name-5", cbMetric.ID)
+	assert.Equal(t, 1, cbMetric.Status)
+	assert.Less(t, cbMetric.StartedAt, cbMetric.FinishedAt)
+	assert.ErrorIs(t, cbMetric.Error, errTest)
+	assert.EqualValues(t, circuitbreaker.OpenState, cbMetric.State)
+	assert.Equal(t, 1, cbMetric.ErrorCount)
+	assert.Equal(t, "backend-service-name-5", cbMetric.ServiceID())
+	assert.Greater(t, cbMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, cbMetric.Success())
+
+	cbPolicy.Command = func() error { return nil }
+
+	metric = core.NewMetric()
+	err = cbPolicy.RunPolicy(metric, policy)
+	assert.ErrorIs(t, err, circuitbreaker.ErrCircuitIsOpen)
+
+	r = metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
+	cbMetric, _ = r.(circuitbreaker.Metric)
+
+	assert.Equal(t, 1, cbMetric.Status)
+	assert.Less(t, cbMetric.StartedAt, cbMetric.FinishedAt)
+	assert.ErrorIs(t, cbMetric.Error, circuitbreaker.ErrCircuitIsOpen)
+	assert.EqualValues(t, circuitbreaker.OpenState, cbMetric.State)
+	assert.Equal(t, 1, cbMetric.ErrorCount)
+	assert.Greater(t, cbMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, cbMetric.Success())
+}
+
+func TestRunPolicyCircuitHalfOpenSetToClosed(t *testing.T) {
+	errTest := errors.New("err test")
+
+	policy := new(mockPolicy)
+
+	policy.On("Run").Return(Metric{
+		ID:         "dummy-service",
+		Status:     1,
+		StartedAt:  time.Now().Add(time.Millisecond * -150),
+		FinishedAt: time.Now(),
+	}, errTest)
+
+	cbPolicy := circuitbreaker.Policy{
+		ServiceID:            "backend-service-name-6",
+		ThresholdErrors:      1,
+		ResetTimeout:         time.Millisecond * 300,
+		BeforeCircuitBreaker: func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
+		OnOpenCircuit:        func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
+		OnHalfOpenCircuit:    func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
+		OnClosedCircuit:      func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
+		AfterCircuitBreaker:  func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
+		Command:              func() error { return nil },
 	}
 
 	metric := core.NewMetric()
-
-	p.Command = func() error { return errTest1 }
-	err := p.RunPolicy(metric, core.PolicySupplier(p))
+	err := cbPolicy.RunPolicy(metric, policy)
 	assert.Nil(t, err)
+
+	state, _ := circuitbreaker.State(cbPolicy)
+	assert.EqualValues(t, circuitbreaker.OpenState, state)
+
+	r := metric[reflect.TypeOf(Metric{}).String()]
+	childMetric, _ := r.(Metric)
+
+	assert.Equal(t, "dummy-service", childMetric.ID)
+	assert.Equal(t, 1, childMetric.Status)
+	assert.Less(t, childMetric.StartedAt, childMetric.FinishedAt)
+	assert.Equal(t, "dummy-service", childMetric.ServiceID())
+	assert.Greater(t, childMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, childMetric.Success())
+
+	r = metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
+	cbMetric, _ := r.(circuitbreaker.Metric)
+
+	assert.Equal(t, "backend-service-name-6", cbMetric.ID)
+	assert.Equal(t, 1, childMetric.Status)
+	assert.Less(t, cbMetric.StartedAt, cbMetric.FinishedAt)
+	assert.ErrorIs(t, cbMetric.Error, errTest)
+	assert.Equal(t, "backend-service-name-6", cbMetric.ServiceID())
+	assert.Greater(t, cbMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, cbMetric.Success())
+
+	metric = core.NewMetric()
+	err = cbPolicy.RunPolicy(metric, policy)
+	assert.ErrorIs(t, err, circuitbreaker.ErrCircuitIsOpen)
+
+	state, _ = circuitbreaker.State(cbPolicy)
+	assert.EqualValues(t, circuitbreaker.OpenState, state)
+
+	r = metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
+	cbMetric, _ = r.(circuitbreaker.Metric)
+
+	assert.Equal(t, "backend-service-name-6", cbMetric.ID)
+	assert.Equal(t, 1, cbMetric.Status)
+	assert.Less(t, cbMetric.StartedAt, cbMetric.FinishedAt)
+	assert.ErrorIs(t, cbMetric.Error, circuitbreaker.ErrCircuitIsOpen)
+	assert.Equal(t, "backend-service-name-6", cbMetric.ServiceID())
+	assert.Greater(t, cbMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, cbMetric.Success())
+
+	time.Sleep(time.Millisecond * 300)
+
+	state, _ = circuitbreaker.State(cbPolicy)
+	assert.EqualValues(t, circuitbreaker.HalfOpenState, state)
+
+	policy = new(mockPolicy)
+	policy.On("Run").Return(Metric{
+		ID:         "dummy-service",
+		Status:     0,
+		StartedAt:  time.Now().Add(time.Millisecond * -150),
+		FinishedAt: time.Now(),
+	}, nil)
+
+	metric = core.NewMetric()
+	err = cbPolicy.RunPolicy(metric, policy)
+	assert.Nil(t, err)
+
+	state, _ = circuitbreaker.State(cbPolicy)
 	assert.EqualValues(t, circuitbreaker.ClosedState, state)
 
-	r := metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
-	m, _ := r.(*circuitbreaker.Metric)
+	r = metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
+	cbMetric, _ = r.(circuitbreaker.Metric)
 
-	assert.Equal(t, "backend-service-name-5", m.ID)
-	assert.Equal(t, 0, m.Status)
-	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Equal(t, "backend-service-name-5", m.ServiceID())
-	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
-	assert.True(t, m.Success())
+	assert.Equal(t, "backend-service-name-6", cbMetric.ID)
+	assert.Equal(t, 0, cbMetric.Status)
+	assert.Less(t, cbMetric.StartedAt, cbMetric.FinishedAt)
+	assert.Nil(t, cbMetric.Error)
+	assert.Equal(t, "backend-service-name-6", cbMetric.ServiceID())
+	assert.Greater(t, cbMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, cbMetric.Success())
+}
+
+func TestRunPolicyHandledErrors(t *testing.T) {
+	errTest1 := errors.New("error test 1")
+	errTest2 := errors.New("error test 2")
+
+	policy := new(mockPolicy)
+
+	policy.On("Run").Return(Metric{
+		ID:         "dummy-service",
+		Status:     1,
+		StartedAt:  time.Now().Add(time.Millisecond * -150),
+		FinishedAt: time.Now(),
+	}, errTest1)
+
+	cbPolicy := circuitbreaker.Policy{
+		ServiceID:            "backend-service-name-7",
+		ThresholdErrors:      1,
+		ResetTimeout:         time.Millisecond * 300,
+		BeforeCircuitBreaker: func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
+		OnOpenCircuit:        func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
+		OnHalfOpenCircuit:    func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
+		OnClosedCircuit:      func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
+		AfterCircuitBreaker:  func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
+		Errors:               []error{errTest1, errTest2},
+		Command:              func() error { return nil },
+	}
+
+	metric := core.NewMetric()
+	err := cbPolicy.RunPolicy(metric, policy)
+	assert.Nil(t, err)
+
+	state, _ := circuitbreaker.State(cbPolicy)
+	assert.EqualValues(t, circuitbreaker.ClosedState, state)
+
+	r := metric[reflect.TypeOf(Metric{}).String()]
+	childMetric, _ := r.(Metric)
+
+	assert.Equal(t, "dummy-service", childMetric.ID)
+	assert.Equal(t, 1, childMetric.Status)
+	assert.Less(t, childMetric.StartedAt, childMetric.FinishedAt)
+	assert.Equal(t, "dummy-service", childMetric.ServiceID())
+	assert.Greater(t, childMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, childMetric.Success())
+
+	r = metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
+	cbMetric, _ := r.(circuitbreaker.Metric)
+
+	assert.Equal(t, "backend-service-name-7", cbMetric.ID)
+	assert.Equal(t, 1, cbMetric.Status)
+	assert.Less(t, cbMetric.StartedAt, cbMetric.FinishedAt)
+	assert.ErrorIs(t, cbMetric.Error, errTest1)
+	assert.Equal(t, "backend-service-name-7", cbMetric.ServiceID())
+	assert.Greater(t, cbMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, cbMetric.Success())
+
+	state, _ = circuitbreaker.State(cbPolicy)
+	assert.EqualValues(t, circuitbreaker.ClosedState, state)
+
+	policy = new(mockPolicy)
+
+	policy.On("Run").Return(Metric{
+		ID:         "dummy-service",
+		Status:     2,
+		StartedAt:  time.Now().Add(time.Millisecond * -150),
+		FinishedAt: time.Now(),
+	}, errTest2)
+
+	metric = core.NewMetric()
+	err = cbPolicy.RunPolicy(metric, policy)
+	assert.Nil(t, err)
+
+	r = metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
+	cbMetric, _ = r.(circuitbreaker.Metric)
+
+	assert.Equal(t, "backend-service-name-7", cbMetric.ID)
+	assert.Equal(t, 1, cbMetric.Status)
+	assert.Less(t, cbMetric.StartedAt, cbMetric.FinishedAt)
+	assert.ErrorIs(t, cbMetric.Error, errTest2)
+	assert.Equal(t, "backend-service-name-7", cbMetric.ServiceID())
+	assert.Greater(t, cbMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, cbMetric.Success())
+
+	state, _ = circuitbreaker.State(cbPolicy)
+	assert.EqualValues(t, circuitbreaker.ClosedState, state)
+}
+
+func TestRunPolicyUnhandledError(t *testing.T) {
+	errTest1 := errors.New("error test 1")
+	errTest2 := errors.New("error test 2")
+
+	policy := new(mockPolicy)
+
+	policy.On("Run").Return(Metric{
+		ID:         "dummy-service",
+		Status:     1,
+		StartedAt:  time.Now().Add(time.Millisecond * -150),
+		FinishedAt: time.Now(),
+	}, errTest1)
+
+	cbPolicy := circuitbreaker.Policy{
+		ServiceID:            "backend-service-name-8",
+		ThresholdErrors:      1,
+		ResetTimeout:         time.Millisecond * 300,
+		BeforeCircuitBreaker: func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
+		OnOpenCircuit:        func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
+		OnHalfOpenCircuit:    func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
+		OnClosedCircuit:      func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
+		AfterCircuitBreaker:  func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
+		Errors:               []error{errTest1},
+		Command:              func() error { return nil },
+	}
+
+	metric := core.NewMetric()
+	err := cbPolicy.RunPolicy(metric, policy)
+	assert.Nil(t, err)
+
+	state, _ := circuitbreaker.State(cbPolicy)
+	assert.EqualValues(t, circuitbreaker.ClosedState, state)
+
+	r := metric[reflect.TypeOf(Metric{}).String()]
+	childMetric, _ := r.(Metric)
+
+	assert.Equal(t, "dummy-service", childMetric.ID)
+	assert.Equal(t, 1, childMetric.Status)
+	assert.Less(t, childMetric.StartedAt, childMetric.FinishedAt)
+	assert.Equal(t, "dummy-service", childMetric.ServiceID())
+	assert.Greater(t, childMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, childMetric.Success())
+
+	r = metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
+	cbMetric, _ := r.(circuitbreaker.Metric)
+
+	assert.Equal(t, "backend-service-name-8", cbMetric.ID)
+	assert.Equal(t, 1, cbMetric.Status)
+	assert.Less(t, cbMetric.StartedAt, cbMetric.FinishedAt)
+	assert.Equal(t, "backend-service-name-8", cbMetric.ServiceID())
+	assert.Greater(t, cbMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, cbMetric.Success())
+
+	policy = new(mockPolicy)
+
+	policy.On("Run").Return(Metric{
+		ID:         "dummy-service",
+		Status:     2,
+		StartedAt:  time.Now().Add(time.Millisecond * -150),
+		FinishedAt: time.Now(),
+	}, errTest2)
+
+	metric = core.NewMetric()
+	err = cbPolicy.RunPolicy(metric, policy)
+	assert.Nil(t, err)
+
+	r = metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
+	cbMetric, _ = r.(circuitbreaker.Metric)
+
+	assert.Equal(t, "backend-service-name-8", cbMetric.ID)
+	assert.Equal(t, 1, cbMetric.Status)
+	assert.Less(t, cbMetric.StartedAt, cbMetric.FinishedAt)
+	assert.ErrorIs(t, cbMetric.Error, errTest2)
+	assert.Equal(t, "backend-service-name-8", cbMetric.ServiceID())
+	assert.Greater(t, cbMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, cbMetric.Success())
+
+	state, _ = circuitbreaker.State(cbPolicy)
+	assert.EqualValues(t, circuitbreaker.OpenState, state)
 }

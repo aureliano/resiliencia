@@ -113,7 +113,7 @@ func TestRunMaxTriesExceeded(t *testing.T) {
 
 	assert.Equal(t, p.Tries, timesBefore)
 	assert.Equal(t, p.Tries, timesAfter)
-	assert.ErrorIs(t, e, retry.ErrExceededTries)
+	assert.ErrorIs(t, e, retry.ErrMaxTriesExceeded)
 	assert.Equal(t, p.Tries, m.Tries)
 	assert.Equal(t, 1, m.Status)
 	assert.Equal(t, "postForm", m.ID)
@@ -258,7 +258,7 @@ func TestRun(t *testing.T) {
 	assert.True(t, m.Success())
 }
 
-func TestRunPolicySuccess(t *testing.T) {
+func TestRunPolicy(t *testing.T) {
 	timesAfter, timesBefore := 0, 0
 
 	policy := new(mockPolicy)
@@ -305,12 +305,13 @@ func TestRunPolicySuccess(t *testing.T) {
 	assert.Equal(t, 0, retryMetric.Status)
 	assert.Less(t, retryMetric.StartedAt, retryMetric.FinishedAt)
 	assert.Len(t, retryMetric.Executions, 1)
+	assert.Nil(t, retryMetric.Error)
 	assert.Nil(t, retryMetric.Executions[0].Error)
 	assert.Equal(t, "remote-service", retryMetric.ServiceID())
 	assert.True(t, retryMetric.Success())
 }
 
-func TestRunPolicyFailure(t *testing.T) {
+func TestRunPolicyUnhandledError(t *testing.T) {
 	errTest := errors.New("error test")
 	timesAfter, timesBefore := 0, 0
 
@@ -358,7 +359,65 @@ func TestRunPolicyFailure(t *testing.T) {
 	assert.Equal(t, 1, retryMetric.Status)
 	assert.Less(t, retryMetric.StartedAt, retryMetric.FinishedAt)
 	assert.Len(t, retryMetric.Executions, 1)
+	assert.ErrorIs(t, retryMetric.Error, retry.ErrUnhandledError)
 	assert.ErrorIs(t, retryMetric.Executions[0].Error, errTest)
+	assert.Equal(t, "remote-service", retryMetric.ServiceID())
+	assert.False(t, retryMetric.Success())
+}
+
+func TestRunPolicyMaxTriesExceeded(t *testing.T) {
+	errTest := errors.New("error test")
+	timesAfter, timesBefore := 0, 0
+
+	policy := new(mockPolicy)
+	policy.On("Run").Return(Metric{
+		ID:         "dummy-service",
+		Status:     1,
+		StartedAt:  time.Now().Add(time.Millisecond * -150),
+		FinishedAt: time.Now(),
+	}, errTest)
+
+	retryPolicy := retry.New("remote-service")
+	retryPolicy.Tries = 3
+	retryPolicy.Delay = time.Millisecond * 10
+	retryPolicy.Errors = []error{errTest}
+	retryPolicy.BeforeTry = func(p retry.Policy, try int) {
+		timesBefore++
+	}
+	retryPolicy.AfterTry = func(p retry.Policy, try int, err error) {
+		timesAfter++
+	}
+	retryPolicy.Command = func() error { return nil }
+	metric := core.NewMetric()
+
+	err := retryPolicy.RunPolicy(metric, policy)
+	assert.ErrorIs(t, err, retry.ErrMaxTriesExceeded)
+	assert.Equal(t, retryPolicy.Tries, timesBefore)
+	assert.Equal(t, retryPolicy.Tries, timesAfter)
+
+	r := metric[reflect.TypeOf(Metric{}).String()]
+	childMetric, _ := r.(Metric)
+
+	assert.Equal(t, "dummy-service", childMetric.ID)
+	assert.Equal(t, 1, childMetric.Status)
+	assert.Less(t, childMetric.StartedAt, childMetric.FinishedAt)
+	assert.Nil(t, childMetric.Error)
+	assert.Equal(t, "dummy-service", childMetric.ServiceID())
+	assert.Greater(t, childMetric.PolicyDuration(), time.Millisecond*150)
+	assert.Greater(t, time.Millisecond*151, childMetric.PolicyDuration())
+	assert.False(t, childMetric.Success())
+
+	r = metric[reflect.TypeOf(retry.Metric{}).String()]
+	retryMetric, _ := r.(retry.Metric)
+
+	assert.Equal(t, "remote-service", retryMetric.ID)
+	assert.Equal(t, 1, retryMetric.Status)
+	assert.Less(t, retryMetric.StartedAt, retryMetric.FinishedAt)
+	assert.Len(t, retryMetric.Executions, 3)
+	assert.ErrorIs(t, retryMetric.Error, retry.ErrMaxTriesExceeded)
+	for i := 0; i < retryPolicy.Tries; i++ {
+		assert.ErrorIs(t, retryMetric.Executions[i].Error, errTest)
+	}
 	assert.Equal(t, "remote-service", retryMetric.ServiceID())
 	assert.False(t, retryMetric.Success())
 }

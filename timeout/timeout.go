@@ -12,7 +12,7 @@ import (
 var (
 	ErrTimeoutError           = fmt.Errorf("timeout must be >= %d", MinTimeout)
 	ErrExecutionTimedOutError = errors.New("execution timed out")
-	ErrCommandRequiredError   = errors.New("command is required")
+	ErrCommandRequiredError   = errors.New("command nor wrapped policy provided")
 )
 
 type Policy struct {
@@ -21,6 +21,7 @@ type Policy struct {
 	BeforeTimeout func(p Policy)
 	AfterTimeout  func(p Policy, err error)
 	Command       core.Command
+	Policy        core.PolicySupplier
 }
 
 type Metric struct {
@@ -41,30 +42,18 @@ func New(serviceID string) Policy {
 }
 
 func (p Policy) Run(metric core.Metric) error {
-	if p.Command == nil {
-		return ErrCommandRequiredError
-	}
-
-	return runPolicy(metric, p, func(core.Metric) error { return p.Command() })
-}
-
-func (p Policy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
-	return runPolicy(metric, p, supplier.Run)
-}
-
-func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error) error {
-	if err := validate(parent); err != nil {
+	if err := validate(p); err != nil {
 		return err
 	}
 
-	m := Metric{ID: parent.ServiceID, StartedAt: time.Now()}
-	if parent.BeforeTimeout != nil {
-		parent.BeforeTimeout(parent)
+	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
+	if p.BeforeTimeout != nil {
+		p.BeforeTimeout(p)
 	}
 
 	cerr := make(chan error)
 	c := make(chan string)
-	go executeCommand(cerr, c, metric, yield)
+	go executeCommand(cerr, c, metric, p)
 
 	var merror error
 
@@ -80,7 +69,7 @@ waiting:
 			if str == "done" {
 				break waiting
 			}
-		case <-time.After(parent.Timeout):
+		case <-time.After(p.Timeout):
 			merror = ErrExecutionTimedOutError
 			m.Error = ErrExecutionTimedOutError
 			m.Status = 1
@@ -89,8 +78,8 @@ waiting:
 		}
 	}
 
-	if parent.AfterTimeout != nil {
-		parent.AfterTimeout(parent, m.Error)
+	if p.AfterTimeout != nil {
+		p.AfterTimeout(p, m.Error)
 	}
 	m.FinishedAt = time.Now()
 	metric[reflect.TypeOf(m).String()] = m
@@ -98,10 +87,15 @@ waiting:
 	return merror
 }
 
-func executeCommand(cerr chan error, c chan string, metric core.Metric,
-	yield func(core.Metric) error) {
+func executeCommand(cerr chan error, c chan string, metric core.Metric, p Policy) {
 	c <- "start"
-	lerr := yield(metric)
+
+	var lerr error
+	if p.Command != nil && p.Policy == nil {
+		lerr = p.Command()
+	} else {
+		lerr = p.Policy.Run(metric)
+	}
 
 	if lerr != nil {
 		cerr <- lerr
@@ -110,6 +104,7 @@ func executeCommand(cerr chan error, c chan string, metric core.Metric,
 
 	c <- "done"
 	close(c)
+
 }
 
 func (m Metric) ServiceID() string {
@@ -125,9 +120,12 @@ func (m Metric) Success() bool {
 }
 
 func validate(p Policy) error {
-	if p.Timeout < MinTimeout {
+	switch {
+	case p.Timeout < MinTimeout:
 		return ErrTimeoutError
+	case p.Command == nil && p.Policy == nil:
+		return ErrCommandRequiredError
+	default:
+		return nil
 	}
-
-	return nil
 }

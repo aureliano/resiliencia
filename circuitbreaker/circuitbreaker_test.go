@@ -20,11 +20,6 @@ func (p *mockPolicy) Run(_ core.Metric) error {
 	return args.Error(0)
 }
 
-func (p *mockPolicy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
-	args := p.Called(metric, supplier)
-	return args.Error(0)
-}
-
 type Metric struct {
 	ID         string
 	Status     int
@@ -122,7 +117,7 @@ func TestRunValidatePolicyResetTimeout(t *testing.T) {
 	p := circuitbreaker.Policy{
 		ThresholdErrors: circuitbreaker.MinThresholdErrors,
 		ResetTimeout:    time.Millisecond * 1,
-		Command:         func() error { return nil },
+		Policy:          &mockPolicy{},
 	}
 
 	err := p.Run(core.NewMetric())
@@ -141,7 +136,7 @@ func TestRunValidatePolicyCommand(t *testing.T) {
 	assert.ErrorIs(t, err, circuitbreaker.ErrCommandRequiredError)
 }
 
-func TestRunCircuitIsOpen(t *testing.T) {
+func TestRunCommandCircuitIsOpen(t *testing.T) {
 	errTest := errors.New("err test")
 
 	p := circuitbreaker.Policy{
@@ -188,7 +183,7 @@ func TestRunCircuitIsOpen(t *testing.T) {
 	assert.False(t, m.Success())
 }
 
-func TestRunCircuitHalfOpenSetToClosed(t *testing.T) {
+func TestRunCommandCircuitHalfOpenSetToClosed(t *testing.T) {
 	errTest := errors.New("err test")
 
 	var state circuitbreaker.CircuitState
@@ -255,7 +250,7 @@ func TestRunCircuitHalfOpenSetToClosed(t *testing.T) {
 	assert.True(t, m.Success())
 }
 
-func TestRunHandledErrors(t *testing.T) {
+func TestRunCommandHandledErrors(t *testing.T) {
 	var state circuitbreaker.CircuitState
 
 	errTest1 := errors.New("error test 1")
@@ -304,7 +299,7 @@ func TestRunHandledErrors(t *testing.T) {
 	assert.False(t, m.Success())
 }
 
-func TestRunUnhandledError(t *testing.T) {
+func TestRunCommandUnhandledError(t *testing.T) {
 	var state circuitbreaker.CircuitState
 
 	errTest1 := errors.New("error test 1")
@@ -375,11 +370,11 @@ func TestRunPolicyCircuitIsOpen(t *testing.T) {
 		OnClosedCircuit:      func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
 		AfterCircuitBreaker:  func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
 	}
-	cbPolicy.Command = func() error { return nil }
+	cbPolicy.Policy = policy
 
 	metric := core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
-	err := cbPolicy.RunPolicy(metric, policy)
+	err := cbPolicy.Run(metric)
 	assert.Nil(t, err)
 
 	r := metric[reflect.TypeOf(Metric{}).String()]
@@ -405,10 +400,10 @@ func TestRunPolicyCircuitIsOpen(t *testing.T) {
 	assert.Greater(t, cbMetric.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, cbMetric.Success())
 
-	cbPolicy.Command = func() error { return nil }
+	cbPolicy.Policy = policy
 
 	metric = core.NewMetric()
-	err = cbPolicy.RunPolicy(metric, policy)
+	err = cbPolicy.Run(metric)
 	assert.ErrorIs(t, err, circuitbreaker.ErrCircuitIsOpen)
 
 	r = metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
@@ -444,12 +439,12 @@ func TestRunPolicyCircuitHalfOpenSetToClosed(t *testing.T) {
 		OnHalfOpenCircuit:    func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
 		OnClosedCircuit:      func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
 		AfterCircuitBreaker:  func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
-		Command:              func() error { return nil },
+		Policy:               policy,
 	}
 
 	metric := core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
-	err := cbPolicy.RunPolicy(metric, policy)
+	err := cbPolicy.Run(metric)
 	assert.Nil(t, err)
 
 	state, _ := circuitbreaker.State(cbPolicy)
@@ -477,7 +472,7 @@ func TestRunPolicyCircuitHalfOpenSetToClosed(t *testing.T) {
 	assert.False(t, cbMetric.Success())
 
 	metric = core.NewMetric()
-	err = cbPolicy.RunPolicy(metric, policy)
+	err = cbPolicy.Run(metric)
 	assert.ErrorIs(t, err, circuitbreaker.ErrCircuitIsOpen)
 
 	state, _ = circuitbreaker.State(cbPolicy)
@@ -510,7 +505,8 @@ func TestRunPolicyCircuitHalfOpenSetToClosed(t *testing.T) {
 
 	metric = core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
-	err = cbPolicy.RunPolicy(metric, policy)
+	cbPolicy.Policy = policy
+	err = cbPolicy.Run(metric)
 	assert.Nil(t, err)
 
 	state, _ = circuitbreaker.State(cbPolicy)
@@ -551,12 +547,12 @@ func TestRunPolicyHandledErrors(t *testing.T) {
 		OnClosedCircuit:      func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
 		AfterCircuitBreaker:  func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
 		Errors:               []error{errTest1, errTest2},
-		Command:              func() error { return nil },
+		Policy:               policy,
 	}
 
 	metric := core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
-	err := cbPolicy.RunPolicy(metric, policy)
+	err := cbPolicy.Run(metric)
 	assert.Nil(t, err)
 
 	state, _ := circuitbreaker.State(cbPolicy)
@@ -597,7 +593,8 @@ func TestRunPolicyHandledErrors(t *testing.T) {
 
 	metric = core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
-	err = cbPolicy.RunPolicy(metric, policy)
+	cbPolicy.Policy = policy
+	err = cbPolicy.Run(metric)
 	assert.Nil(t, err)
 
 	r = metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
@@ -638,12 +635,12 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 		OnClosedCircuit:      func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {},
 		AfterCircuitBreaker:  func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {},
 		Errors:               []error{errTest1},
-		Command:              func() error { return nil },
+		Policy:               policy,
 	}
 
 	metric := core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
-	err := cbPolicy.RunPolicy(metric, policy)
+	err := cbPolicy.Run(metric)
 	assert.Nil(t, err)
 
 	state, _ := circuitbreaker.State(cbPolicy)
@@ -680,7 +677,8 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 
 	metric = core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
-	err = cbPolicy.RunPolicy(metric, policy)
+	cbPolicy.Policy = policy
+	err = cbPolicy.Run(metric)
 	assert.Nil(t, err)
 
 	r = metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]

@@ -20,11 +20,6 @@ func (p *mockPolicy) Run(_ core.Metric) error {
 	return args.Error(0)
 }
 
-func (p *mockPolicy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
-	args := p.Called(metric, supplier)
-	return args.Error(0)
-}
-
 type Metric struct {
 	ID         string
 	Status     int
@@ -74,6 +69,14 @@ func TestRunValidatePolicyTimeout(t *testing.T) {
 	err := p.Run(metric)
 
 	assert.ErrorIs(t, err, timeout.ErrTimeoutError)
+
+	p.Command = nil
+	p.Policy = &mockPolicy{}
+
+	metric = core.NewMetric()
+	err = p.Run(metric)
+
+	assert.ErrorIs(t, err, timeout.ErrTimeoutError)
 }
 
 func TestRunValidatePolicyCommand(t *testing.T) {
@@ -86,7 +89,7 @@ func TestRunValidatePolicyCommand(t *testing.T) {
 	assert.ErrorIs(t, err, timeout.ErrCommandRequiredError)
 }
 
-func TestRun(t *testing.T) {
+func TestRunCommand(t *testing.T) {
 	p := timeout.New("remote-service")
 	p.Timeout = time.Second * 4
 	p.BeforeTimeout = func(p timeout.Policy) {}
@@ -109,7 +112,7 @@ func TestRun(t *testing.T) {
 	assert.True(t, m.Success())
 }
 
-func TestRunWithUnknownError(t *testing.T) {
+func TestRunCommandWithUnknownError(t *testing.T) {
 	errTest := errors.New("err test")
 	p := timeout.New("remote-service")
 	p.Timeout = time.Second * 4
@@ -133,7 +136,7 @@ func TestRunWithUnknownError(t *testing.T) {
 	assert.False(t, m.Success())
 }
 
-func TestRunTimeout(t *testing.T) {
+func TestRunCommandTimeout(t *testing.T) {
 	p := timeout.New("remote-service")
 	p.Timeout = time.Millisecond * 50
 	p.BeforeTimeout = func(p timeout.Policy) {}
@@ -171,11 +174,11 @@ func TestRunPolicySuccess(t *testing.T) {
 
 	timeoutPolicy := timeout.New("remote-service")
 	timeoutPolicy.Timeout = time.Millisecond * 100
-	timeoutPolicy.Command = func() error { return nil }
+	timeoutPolicy.Policy = policy
 	metric := core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 
-	err := timeoutPolicy.RunPolicy(metric, policy)
+	err := timeoutPolicy.Run(metric)
 	assert.Nil(t, err)
 
 	r := metric[reflect.TypeOf(Metric{}).String()]
@@ -215,11 +218,11 @@ func TestRunPolicyChildFail(t *testing.T) {
 
 	timeoutPolicy := timeout.New("remote-service")
 	timeoutPolicy.Timeout = time.Millisecond * 10
-	timeoutPolicy.Command = func() error { return nil }
+	timeoutPolicy.Policy = policy
 	metric := core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 
-	err := timeoutPolicy.RunPolicy(metric, policy)
+	err := timeoutPolicy.Run(metric)
 	assert.Nil(t, err)
 
 	r := metric[reflect.TypeOf(Metric{}).String()]
@@ -251,10 +254,10 @@ func TestRunPolicyTimeout(t *testing.T) {
 
 	timeoutPolicy := timeout.New("remote-service")
 	timeoutPolicy.Timeout = time.Millisecond * 10
-	timeoutPolicy.Command = func() error { return nil }
+	timeoutPolicy.Policy = policy
 	metric := core.NewMetric()
 
-	err := timeoutPolicy.RunPolicy(metric, policy)
+	err := timeoutPolicy.Run(metric)
 	assert.ErrorIs(t, err, timeout.ErrExecutionTimedOutError)
 
 	r := metric[reflect.TypeOf(Metric{}).String()]

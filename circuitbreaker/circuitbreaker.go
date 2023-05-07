@@ -13,7 +13,7 @@ import (
 var (
 	ErrThresholdError         = fmt.Errorf("threshold must be >= %d", MinThresholdErrors)
 	ErrResetTimeoutError      = fmt.Errorf("reset timeout must be >= %dms", MinResetTimeout.Milliseconds())
-	ErrCommandRequiredError   = errors.New("command is required")
+	ErrCommandRequiredError   = errors.New("command nor wrapped policy provided")
 	ErrCircuitIsOpen          = errors.New("circuit is open")
 	ErrCircuitBreakerNotFound = errors.New("no circuit breaker found")
 )
@@ -29,6 +29,7 @@ type Policy struct {
 	OnHalfOpenCircuit    func(p Policy, status *CircuitBreaker)
 	OnClosedCircuit      func(p Policy, status *CircuitBreaker)
 	Command              core.Command
+	Policy               core.PolicySupplier
 }
 
 type Metric struct {
@@ -87,36 +88,24 @@ func New(serviceID string) Policy {
 }
 
 func (p Policy) Run(metric core.Metric) error {
-	if p.Command == nil {
-		return ErrCommandRequiredError
-	}
-
-	return runPolicy(metric, p, func(core.Metric) error { return p.Command() })
-}
-
-func (p Policy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
-	return runPolicy(metric, p, supplier.Run)
-}
-
-func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error) error {
-	if err := validate(parent); err != nil {
+	if err := validate(p); err != nil {
 		return err
 	}
 
 	cbCache.mu.Lock()
-	cb := cbCache.cache[parent.ServiceID]
+	cb := cbCache.cache[p.ServiceID]
 	if cb == nil {
 		cb = new(CircuitBreaker)
-		cbCache.cache[parent.ServiceID] = cb
+		cbCache.cache[p.ServiceID] = cb
 	}
 	cbCache.mu.Unlock()
 
-	m := Metric{ID: parent.ServiceID, StartedAt: time.Now()}
-	if parent.BeforeCircuitBreaker != nil {
-		parent.BeforeCircuitBreaker(parent, cb)
+	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
+	if p.BeforeCircuitBreaker != nil {
+		p.BeforeCircuitBreaker(p, cb)
 	}
 
-	setInitialState(parent, cb)
+	setInitialState(p, cb)
 	m.State = cb.State
 	m.ErrorCount = cb.ErrorCount
 
@@ -129,24 +118,32 @@ func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error)
 		return ErrCircuitIsOpen
 	}
 
-	err := yield(metric)
+	err := execute(p, metric)
 
 	if err != nil {
 		m.Error = err
 		m.Status = 1
 	}
 
-	setPostState(parent, cb, err)
+	setPostState(p, cb, err)
 	m.State = cb.State
 	m.ErrorCount = cb.ErrorCount
 
-	if parent.AfterCircuitBreaker != nil {
-		parent.AfterCircuitBreaker(parent, cb, err)
+	if p.AfterCircuitBreaker != nil {
+		p.AfterCircuitBreaker(p, cb, err)
 	}
 	m.FinishedAt = time.Now()
 	metric[reflect.TypeOf(m).String()] = m
 
 	return nil
+}
+
+func execute(p Policy, metric core.Metric) error {
+	if p.Command != nil && p.Policy == nil {
+		return p.Command()
+	}
+
+	return p.Policy.Run(metric)
 }
 
 func setInitialState(p Policy, cb *CircuitBreaker) {
@@ -207,6 +204,8 @@ func validate(p Policy) error {
 		return ErrThresholdError
 	case p.ResetTimeout < MinResetTimeout:
 		return ErrResetTimeoutError
+	case p.Command == nil && p.Policy == nil:
+		return ErrCommandRequiredError
 	default:
 		return nil
 	}

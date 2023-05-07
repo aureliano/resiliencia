@@ -10,7 +10,7 @@ import (
 
 var (
 	ErrNoFallBackHandler    = errors.New("no fallback handler")
-	ErrCommandRequiredError = errors.New("command is required")
+	ErrCommandRequiredError = errors.New("command nor wrapped policy provided")
 	ErrUnhandledError       = errors.New("unhandled error")
 )
 
@@ -21,6 +21,7 @@ type Policy struct {
 	BeforeFallBack  func(p Policy)
 	AfterFallBack   func(p Policy, err error)
 	Command         core.Command
+	Policy          core.PolicySupplier
 }
 
 type Metric struct {
@@ -36,35 +37,23 @@ func New(serviceID string) Policy {
 }
 
 func (p Policy) Run(metric core.Metric) error {
-	if p.Command == nil {
-		return ErrCommandRequiredError
-	}
-
-	return runPolicy(metric, p, func(core.Metric) error { return p.Command() })
-}
-
-func (p Policy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
-	return runPolicy(metric, p, supplier.Run)
-}
-
-func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error) error {
-	if err := validate(parent); err != nil {
+	if err := validate(p); err != nil {
 		return err
 	}
 
-	m := Metric{ID: parent.ServiceID, StartedAt: time.Now()}
-	if parent.BeforeFallBack != nil {
-		parent.BeforeFallBack(parent)
+	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
+	if p.BeforeFallBack != nil {
+		p.BeforeFallBack(p)
 	}
 
-	err := yield(metric)
+	err := execute(p, metric)
 
-	if parent.AfterFallBack != nil {
-		parent.AfterFallBack(parent, err)
+	if p.AfterFallBack != nil {
+		p.AfterFallBack(p, err)
 	}
 	m.FinishedAt = time.Now()
 
-	if err != nil && !handledError(parent, err) {
+	if err != nil && !handledError(p, err) {
 		m.Status = 1
 		m.Error = ErrUnhandledError
 		metric[reflect.TypeOf(m).String()] = m
@@ -73,11 +62,19 @@ func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error)
 	}
 
 	if err != nil {
-		parent.FallBackHandler(err)
+		p.FallBackHandler(err)
 	}
 	metric[reflect.TypeOf(m).String()] = m
 
 	return nil
+}
+
+func execute(p Policy, metric core.Metric) error {
+	if p.Command != nil && p.Policy == nil {
+		return p.Command()
+	}
+
+	return p.Policy.Run(metric)
 }
 
 func handledError(p Policy, err error) bool {
@@ -85,11 +82,14 @@ func handledError(p Policy, err error) bool {
 }
 
 func validate(p Policy) error {
-	if p.FallBackHandler == nil {
+	switch {
+	case p.FallBackHandler == nil:
 		return ErrNoFallBackHandler
+	case p.Command == nil && p.Policy == nil:
+		return ErrCommandRequiredError
+	default:
+		return nil
 	}
-
-	return nil
 }
 
 func (m Metric) ServiceID() string {

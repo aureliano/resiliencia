@@ -19,11 +19,6 @@ func (p *mockPolicy) Run(_ core.Metric) error {
 	return args.Error(0)
 }
 
-func (p *mockPolicy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
-	args := p.Called(metric, supplier)
-	return args.Error(0)
-}
-
 type Metric struct {
 	ID         string
 	Status     int
@@ -75,7 +70,7 @@ func TestRunValidatePolicyTries(t *testing.T) {
 }
 
 func TestRunValidatePolicyDelay(t *testing.T) {
-	p := retry.Policy{Tries: retry.MinTries, Delay: time.Duration(-1), Command: func() error { return nil }}
+	p := retry.Policy{Tries: retry.MinTries, Delay: time.Duration(-1), Policy: &mockPolicy{}}
 
 	metric := core.NewMetric()
 	err := p.Run(metric)
@@ -92,7 +87,7 @@ func TestRunValidatePolicyCommand(t *testing.T) {
 	assert.ErrorIs(t, err, retry.ErrCommandRequiredError)
 }
 
-func TestRunMaxTriesExceeded(t *testing.T) {
+func TestRunCommandMaxTriesExceeded(t *testing.T) {
 	timesAfter, timesBefore := 0, 0
 	errTest := errors.New("any")
 
@@ -129,7 +124,7 @@ func TestRunMaxTriesExceeded(t *testing.T) {
 	}
 }
 
-func TestRunHandledErrors(t *testing.T) {
+func TestRunCommandHandledErrors(t *testing.T) {
 	errTest1 := errors.New("error test 1")
 	errTest2 := errors.New("error test 2")
 	timesAfter, timesBefore := 0, 0
@@ -180,7 +175,7 @@ func TestRunHandledErrors(t *testing.T) {
 	assert.Nil(t, m.Executions[2].Error)
 }
 
-func TestRunUnhandledError(t *testing.T) {
+func TestRunCommandUnhandledError(t *testing.T) {
 	errTest1 := errors.New("error test 1")
 	errTest2 := errors.New("error test 2")
 	errTest3 := errors.New("error test 3")
@@ -234,7 +229,7 @@ func TestRunUnhandledError(t *testing.T) {
 	assert.ErrorIs(t, errTest3, m.Executions[2].Error)
 }
 
-func TestRun(t *testing.T) {
+func TestRunCommand(t *testing.T) {
 	timesAfter, timesBefore := 0, 0
 
 	p := retry.New("postForm")
@@ -281,7 +276,7 @@ func TestRunPolicy(t *testing.T) {
 	retryPolicy := retry.New("remote-service")
 	retryPolicy.Tries = 3
 	retryPolicy.Delay = time.Millisecond * 30
-	retryPolicy.Command = func() error { return nil }
+	retryPolicy.Policy = policy
 	retryPolicy.BeforeTry = func(p retry.Policy, try int) {
 		timesBefore++
 	}
@@ -291,7 +286,7 @@ func TestRunPolicy(t *testing.T) {
 	metric := core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 
-	err := retryPolicy.RunPolicy(metric, policy)
+	err := retryPolicy.Run(metric)
 	assert.Nil(t, err)
 	assert.Equal(t, 1, timesBefore)
 	assert.Equal(t, 1, timesAfter)
@@ -343,11 +338,11 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 	retryPolicy.AfterTry = func(p retry.Policy, try int, err error) {
 		timesAfter++
 	}
-	retryPolicy.Command = func() error { return nil }
+	retryPolicy.Policy = policy
 	metric := core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 
-	err := retryPolicy.RunPolicy(metric, policy)
+	err := retryPolicy.Run(metric)
 	assert.ErrorIs(t, err, retry.ErrUnhandledError)
 	assert.Equal(t, 1, timesBefore)
 	assert.Equal(t, 1, timesAfter)
@@ -400,11 +395,11 @@ func TestRunPolicyMaxTriesExceeded(t *testing.T) {
 	retryPolicy.AfterTry = func(p retry.Policy, try int, err error) {
 		timesAfter++
 	}
-	retryPolicy.Command = func() error { return nil }
+	retryPolicy.Policy = policy
 	metric := core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
 
-	err := retryPolicy.RunPolicy(metric, policy)
+	err := retryPolicy.Run(metric)
 	assert.ErrorIs(t, err, retry.ErrMaxTriesExceeded)
 	assert.Equal(t, retryPolicy.Tries, timesBefore)
 	assert.Equal(t, retryPolicy.Tries, timesAfter)

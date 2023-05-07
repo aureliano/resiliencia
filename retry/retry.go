@@ -14,7 +14,7 @@ var (
 	ErrTriesError           = fmt.Errorf("tries must be >= %d", MinTries)
 	ErrMaxTriesExceeded     = errors.New("max tries reached")
 	ErrUnhandledError       = errors.New("unhandled error")
-	ErrCommandRequiredError = errors.New("command is required")
+	ErrCommandRequiredError = errors.New("command nor wrapped policy provided")
 )
 
 type Policy struct {
@@ -25,6 +25,7 @@ type Policy struct {
 	BeforeTry func(p Policy, try int)
 	AfterTry  func(p Policy, try int, err error)
 	Command   core.Command
+	Policy    core.PolicySupplier
 }
 
 type Metric struct {
@@ -57,23 +58,11 @@ func New(serviceID string) Policy {
 }
 
 func (p Policy) Run(metric core.Metric) error {
-	if p.Command == nil {
-		return ErrCommandRequiredError
-	}
-
-	return runPolicy(metric, p, func(core.Metric) error { return p.Command() })
-}
-
-func (p Policy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
-	return runPolicy(metric, p, supplier.Run)
-}
-
-func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error) error {
-	if err := validate(parent); err != nil {
+	if err := validate(p); err != nil {
 		return err
 	}
 
-	m := Metric{ID: parent.ServiceID, StartedAt: time.Now(), Executions: make([]struct {
+	m := Metric{ID: p.ServiceID, StartedAt: time.Now(), Executions: make([]struct {
 		Iteration  int
 		StartedAt  time.Time
 		FinishedAt time.Time
@@ -82,7 +71,7 @@ func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error)
 	}, 0)}
 	done := false
 
-	for i := 0; i < parent.Tries; i++ {
+	for i := 0; i < p.Tries; i++ {
 		turn := i + 1
 		m.Tries = turn
 		exec := struct {
@@ -95,12 +84,12 @@ func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error)
 
 		exec.Iteration = turn
 
-		if parent.BeforeTry != nil {
-			parent.BeforeTry(parent, turn)
+		if p.BeforeTry != nil {
+			p.BeforeTry(p, turn)
 		}
 
 		exec.StartedAt = time.Now()
-		err := yield(metric)
+		err := execute(p, metric)
 
 		exec.Error = err
 		exec.FinishedAt = time.Now()
@@ -108,11 +97,11 @@ func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error)
 		exec.Duration = exec.FinishedAt.Sub(exec.StartedAt)
 		m.Executions = append(m.Executions, exec)
 
-		if parent.AfterTry != nil {
-			parent.AfterTry(parent, turn, err)
+		if p.AfterTry != nil {
+			p.AfterTry(p, turn, err)
 		}
 
-		if err != nil && !handledError(parent, err) {
+		if err != nil && !handledError(p, err) {
 			m.Status = 1
 			m.Error = ErrUnhandledError
 			metric[reflect.TypeOf(m).String()] = m
@@ -125,7 +114,7 @@ func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error)
 			break
 		}
 
-		time.Sleep(parent.Delay)
+		time.Sleep(p.Delay)
 	}
 
 	m.FinishedAt = time.Now()
@@ -140,6 +129,14 @@ func runPolicy(metric core.Metric, parent Policy, yield func(core.Metric) error)
 	metric[reflect.TypeOf(m).String()] = m
 
 	return nil
+}
+
+func execute(p Policy, metric core.Metric) error {
+	if p.Command != nil && p.Policy == nil {
+		return p.Command()
+	}
+
+	return p.Policy.Run(metric)
 }
 
 func (m Metric) ServiceID() string {
@@ -169,6 +166,8 @@ func validate(p Policy) error {
 		return ErrDelayError
 	case p.Tries < MinTries:
 		return ErrTriesError
+	case p.Command == nil && p.Policy == nil:
+		return ErrCommandRequiredError
 	default:
 		return nil
 	}

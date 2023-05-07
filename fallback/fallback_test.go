@@ -19,11 +19,6 @@ func (p *mockPolicy) Run(_ core.Metric) error {
 	return args.Error(0)
 }
 
-func (p *mockPolicy) RunPolicy(metric core.Metric, supplier core.PolicySupplier) error {
-	args := p.Called(metric, supplier)
-	return args.Error(0)
-}
-
 type Metric struct {
 	ID         string
 	Status     int
@@ -71,6 +66,11 @@ func TestRunValidatePolicyFallBackHandler(t *testing.T) {
 	err := p.Run(metric)
 
 	assert.ErrorIs(t, err, fallback.ErrNoFallBackHandler)
+
+	p.Command = nil
+	p.Policy = &mockPolicy{}
+
+	assert.ErrorIs(t, err, fallback.ErrNoFallBackHandler)
 }
 
 func TestRunValidatePolicyCommand(t *testing.T) {
@@ -83,7 +83,7 @@ func TestRunValidatePolicyCommand(t *testing.T) {
 	assert.ErrorIs(t, err, fallback.ErrCommandRequiredError)
 }
 
-func TestRunNoFallback(t *testing.T) {
+func TestRunCommandNoFallback(t *testing.T) {
 	fallbackCalled := false
 	p := fallback.New("service-id")
 	p.FallBackHandler = func(err error) {
@@ -109,7 +109,7 @@ func TestRunNoFallback(t *testing.T) {
 	assert.True(t, m.Success())
 }
 
-func TestRunHandleError(t *testing.T) {
+func TestRunCommandHandleError(t *testing.T) {
 	fallbackCalled := false
 	errTest1 := errors.New("error test 1")
 	errTest2 := errors.New("error test 2")
@@ -140,7 +140,7 @@ func TestRunHandleError(t *testing.T) {
 	assert.True(t, m.Success())
 }
 
-func TestRunUnhandledError(t *testing.T) {
+func TestRunCommandUnhandledError(t *testing.T) {
 	fallbackCalled := false
 	errTest1 := errors.New("error test 1")
 	errTest2 := errors.New("error test 2")
@@ -195,11 +195,11 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 	}
 	fallbackPolicy.BeforeFallBack = func(p fallback.Policy) {}
 	fallbackPolicy.AfterFallBack = func(p fallback.Policy, err error) {}
-	fallbackPolicy.Command = func() error { return errTest3 }
+	fallbackPolicy.Policy = policy
 
 	metric := core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
-	err := fallbackPolicy.RunPolicy(metric, policy)
+	err := fallbackPolicy.Run(metric)
 
 	r := metric[reflect.TypeOf(Metric{}).String()]
 	childMetric, _ := r.(Metric)
@@ -249,11 +249,11 @@ func TestRunPolicyHandledError(t *testing.T) {
 	}
 	fallbackPolicy.BeforeFallBack = func(p fallback.Policy) {}
 	fallbackPolicy.AfterFallBack = func(p fallback.Policy, err error) {}
-	fallbackPolicy.Command = func() error { return nil }
+	fallbackPolicy.Policy = policy
 
 	metric := core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
-	err := fallbackPolicy.RunPolicy(metric, policy)
+	err := fallbackPolicy.Run(metric)
 
 	r := metric[reflect.TypeOf(Metric{}).String()]
 	childMetric, _ := r.(Metric)
@@ -299,11 +299,11 @@ func TestRunPolicyNoFallback(t *testing.T) {
 	}
 	fallbackPolicy.BeforeFallBack = func(p fallback.Policy) {}
 	fallbackPolicy.AfterFallBack = func(p fallback.Policy, err error) {}
-	fallbackPolicy.Command = func() error { return nil }
+	fallbackPolicy.Policy = policy
 
 	metric := core.NewMetric()
 	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
-	err := fallbackPolicy.RunPolicy(metric, policy)
+	err := fallbackPolicy.Run(metric)
 
 	r := metric[reflect.TypeOf(Metric{}).String()]
 	childMetric, _ := r.(Metric)

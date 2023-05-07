@@ -46,7 +46,3 @@ func (d Decoration) WithCircuitBreaker(policy circuitbreaker.Policy) Decorator {
 	d.CircuitBreaker = policy
 	return d
 }
-
-/*func (d Decoration) Execute() {
-	d.CircuitBreaker.RunPolicy(nil, d.Retry.RunPolicy(nil, d.Timeout.RunPolicy(nil, d.Supplier)))
-}*/

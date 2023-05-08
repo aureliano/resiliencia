@@ -20,6 +20,16 @@ func (p *mockPolicy) Run(_ core.Metric) error {
 	return args.Error(0)
 }
 
+func (p *mockPolicy) WithCommand(_ core.Command) core.PolicySupplier {
+	args := p.Called()
+	return args.Get(0).(core.PolicySupplier)
+}
+
+func (p *mockPolicy) WithPolicy(_ core.PolicySupplier) core.PolicySupplier {
+	args := p.Called()
+	return args.Get(0).(core.PolicySupplier)
+}
+
 type Metric struct {
 	ID         string
 	Status     int
@@ -694,4 +704,22 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 
 	state, _ = circuitbreaker.State(cbPolicy)
 	assert.EqualValues(t, circuitbreaker.OpenState, state)
+}
+
+func TestWithCommand(t *testing.T) {
+	p := circuitbreaker.New("id")
+	assert.Nil(t, p.Command)
+
+	np := p.WithCommand(func() error { return nil })
+	p, _ = np.(circuitbreaker.Policy)
+	assert.NotNil(t, p.Command)
+}
+
+func TestWithPolicy(t *testing.T) {
+	p := circuitbreaker.New("id")
+	assert.Nil(t, p.Policy)
+
+	np := p.WithPolicy(&mockPolicy{})
+	p, _ = np.(circuitbreaker.Policy)
+	assert.Equal(t, &mockPolicy{}, p.Policy)
 }

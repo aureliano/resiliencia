@@ -87,6 +87,16 @@ waiting:
 	return merror
 }
 
+func (p Policy) WithCommand(command core.Command) core.PolicySupplier {
+	p.Command = command
+	return p
+}
+
+func (p Policy) WithPolicy(policy core.PolicySupplier) core.PolicySupplier {
+	p.Policy = policy
+	return p
+}
+
 func executeCommand(cerr chan error, c chan string, metric core.Metric, p Policy) {
 	c <- "start"
 

@@ -20,14 +20,14 @@ func TestDecorationImplementsDecorator(t *testing.T) {
 	assert.True(t, reflect.TypeOf(d).Implements(i))
 }
 
-func TestExecutePolicyRequired(t *testing.T) {
+func TestDecoratorExecutePolicyRequired(t *testing.T) {
 	d := resiliencia.Decorate(func() error { return nil })
 
 	_, err := d.Execute()
 	assert.ErrorIs(t, err, resiliencia.ErrPolicyRequired)
 }
 
-func TestExecuteSupplierRequired(t *testing.T) {
+func TestDecoratorExecuteSupplierRequired(t *testing.T) {
 	d := resiliencia.Decorate(nil)
 	d = d.WithRetry(retry.New("id"))
 
@@ -35,7 +35,7 @@ func TestExecuteSupplierRequired(t *testing.T) {
 	assert.ErrorIs(t, err, resiliencia.ErrSupplierRequired)
 }
 
-func TestExecuteAnyWrappedPolicyWithCommand(t *testing.T) {
+func TestDecoratorExecuteAnyWrappedPolicyWithCommand(t *testing.T) {
 	d := resiliencia.Decorate(func() error { return nil })
 	d = d.WithRetry(retry.New("id"))
 	tm := timeout.New("id")
@@ -46,7 +46,7 @@ func TestExecuteAnyWrappedPolicyWithCommand(t *testing.T) {
 	assert.ErrorIs(t, err, resiliencia.ErrWrappedPolicyWithCommand)
 }
 
-func TestExecuteAnyWrappedPolicyWithNestedPolicy(t *testing.T) {
+func TestDecoratorExecuteAnyWrappedPolicyWithNestedPolicy(t *testing.T) {
 	d := resiliencia.Decorate(func() error { return nil })
 	d = d.WithRetry(retry.New("id"))
 	tm := timeout.New("id")
@@ -57,7 +57,7 @@ func TestExecuteAnyWrappedPolicyWithNestedPolicy(t *testing.T) {
 	assert.ErrorIs(t, err, resiliencia.ErrWrappedPolicyWithNestedPolicy)
 }
 
-func TestExecuteFallback(t *testing.T) {
+func TestDecoratorExecuteFallback(t *testing.T) {
 	d := resiliencia.Decorate(func() error { return nil })
 	f := fallback.New("service-id")
 	f.FallBackHandler = func(err error) {}
@@ -77,7 +77,7 @@ func TestExecuteFallback(t *testing.T) {
 	assert.Greater(t, m.PolicyDuration(), time.Duration(0))
 }
 
-func TestExecuteFallbackWithCircuitBreaker(t *testing.T) {
+func TestDecoratorExecuteFallbackWithCircuitBreaker(t *testing.T) {
 	id := "service-id"
 	d := resiliencia.Decorate(func() error { return nil })
 	f := fallback.New(id)
@@ -111,7 +111,7 @@ func TestExecuteFallbackWithCircuitBreaker(t *testing.T) {
 	assert.Greater(t, m.PolicyDuration(), time.Duration(0))
 }
 
-func TestExecuteFallbackWithCircuitBreakerAndRetry(t *testing.T) {
+func TestDecoratorExecuteFallbackWithCircuitBreakerAndRetry(t *testing.T) {
 	id := "service-id"
 	d := resiliencia.Decorate(func() error { return nil })
 	f := fallback.New(id)
@@ -157,7 +157,7 @@ func TestExecuteFallbackWithCircuitBreakerAndRetry(t *testing.T) {
 	assert.Greater(t, m.PolicyDuration(), time.Duration(0))
 }
 
-func TestExecuteFallbackWithCircuitBreakerAndRetryAndTimeout(t *testing.T) {
+func TestDecoratorExecuteFallbackWithCircuitBreakerAndRetryAndTimeout(t *testing.T) {
 	id := "service-id"
 	d := resiliencia.Decorate(func() error { return nil })
 	f := fallback.New(id)
@@ -216,7 +216,7 @@ func TestExecuteFallbackWithCircuitBreakerAndRetryAndTimeout(t *testing.T) {
 	assert.Greater(t, m.PolicyDuration(), time.Duration(0))
 }
 
-func TestExecuteCircuitBreaker(t *testing.T) {
+func TestDecoratorExecuteCircuitBreaker(t *testing.T) {
 	d := resiliencia.Decorate(func() error { return nil })
 	d = d.WithCircuitBreaker(circuitbreaker.New("service-id"))
 
@@ -236,7 +236,7 @@ func TestExecuteCircuitBreaker(t *testing.T) {
 	assert.Greater(t, m.PolicyDuration(), time.Duration(0))
 }
 
-func TestExecuteCircuitBreakerWithRetry(t *testing.T) {
+func TestDecoratorExecuteCircuitBreakerWithRetry(t *testing.T) {
 	id := "service-id"
 	d := resiliencia.Decorate(func() error { return nil })
 	d = d.WithCircuitBreaker(circuitbreaker.New(id))
@@ -269,7 +269,7 @@ func TestExecuteCircuitBreakerWithRetry(t *testing.T) {
 	assert.Greater(t, cbm.PolicyDuration(), time.Duration(0))
 }
 
-func TestExecuteCircuitBreakerWithRetryAndTimeout(t *testing.T) {
+func TestDecoratorExecuteCircuitBreakerWithRetryAndTimeout(t *testing.T) {
 	id := "service-id"
 	d := resiliencia.Decorate(func() error { return nil })
 	d = d.WithCircuitBreaker(circuitbreaker.New(id))
@@ -315,7 +315,7 @@ func TestExecuteCircuitBreakerWithRetryAndTimeout(t *testing.T) {
 	assert.Greater(t, cbm.PolicyDuration(), time.Duration(0))
 }
 
-func TestExecuteRetry(t *testing.T) {
+func TestDecoratorExecuteRetry(t *testing.T) {
 	id := "service-id"
 	d := resiliencia.Decorate(func() error { return nil })
 	d = d.WithRetry(retry.New(id))
@@ -335,7 +335,7 @@ func TestExecuteRetry(t *testing.T) {
 	assert.Greater(t, rm.PolicyDuration(), time.Duration(0))
 }
 
-func TestExecuteRetryWithTimeout(t *testing.T) {
+func TestDecoratorExecuteRetryWithTimeout(t *testing.T) {
 	id := "service-id"
 	d := resiliencia.Decorate(func() error { return nil })
 	d = d.WithRetry(retry.New(id))
@@ -368,7 +368,7 @@ func TestExecuteRetryWithTimeout(t *testing.T) {
 	assert.Greater(t, rm.PolicyDuration(), time.Duration(0))
 }
 
-func TestExecuteTimeout(t *testing.T) {
+func TestDecoratorExecuteTimeout(t *testing.T) {
 	id := "service-id"
 	d := resiliencia.Decorate(func() error { return nil })
 	tmp := timeout.New(id)

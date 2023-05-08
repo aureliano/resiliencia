@@ -9,6 +9,8 @@ type Command func() error
 
 type PolicySupplier interface {
 	Run(metric Metric) error
+	WithCommand(command Command) PolicySupplier
+	WithPolicy(policy PolicySupplier) PolicySupplier
 }
 
 type MetricRecorder interface {

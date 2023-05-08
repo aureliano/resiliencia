@@ -138,6 +138,16 @@ func (p Policy) Run(metric core.Metric) error {
 	return nil
 }
 
+func (p Policy) WithCommand(command core.Command) core.PolicySupplier {
+	p.Command = command
+	return p
+}
+
+func (p Policy) WithPolicy(policy core.PolicySupplier) core.PolicySupplier {
+	p.Policy = policy
+	return p
+}
+
 func execute(p Policy, metric core.Metric) error {
 	if p.Command != nil && p.Policy == nil {
 		return p.Command()

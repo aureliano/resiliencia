@@ -19,6 +19,16 @@ func (p *mockPolicy) Run(_ core.Metric) error {
 	return args.Error(0)
 }
 
+func (p *mockPolicy) WithCommand(_ core.Command) core.PolicySupplier {
+	args := p.Called()
+	return args.Get(0).(core.PolicySupplier)
+}
+
+func (p *mockPolicy) WithPolicy(_ core.PolicySupplier) core.PolicySupplier {
+	args := p.Called()
+	return args.Get(0).(core.PolicySupplier)
+}
+
 type Metric struct {
 	ID         string
 	Status     int
@@ -329,4 +339,22 @@ func TestRunPolicyNoFallback(t *testing.T) {
 	assert.Equal(t, "service-id", fallbackMetric.ServiceID())
 	assert.Greater(t, fallbackMetric.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, fallbackMetric.Success())
+}
+
+func TestWithCommand(t *testing.T) {
+	p := fallback.New("id")
+	assert.Nil(t, p.Command)
+
+	np := p.WithCommand(func() error { return nil })
+	p, _ = np.(fallback.Policy)
+	assert.NotNil(t, p.Command)
+}
+
+func TestWithPolicy(t *testing.T) {
+	p := fallback.New("id")
+	assert.Nil(t, p.Policy)
+
+	np := p.WithPolicy(&mockPolicy{})
+	p, _ = np.(fallback.Policy)
+	assert.Equal(t, &mockPolicy{}, p.Policy)
 }

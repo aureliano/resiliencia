@@ -1,6 +1,7 @@
 package resiliencia_test
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
 	"time"
@@ -159,18 +160,31 @@ func TestDecoratorExecuteFallbackWithCircuitBreakerAndRetry(t *testing.T) {
 
 func TestDecoratorExecuteFallbackWithCircuitBreakerAndRetryAndTimeout(t *testing.T) {
 	id := "service-id"
-	d := resiliencia.Decorate(func() error { return nil })
+	var sb bytes.Buffer
+
 	f := fallback.New(id)
 	f.FallBackHandler = func(err error) {}
-	d = d.WithFallback(f)
-	d = d.WithCircuitBreaker(circuitbreaker.New(id))
-	d = d.WithRetry(retry.New(id))
+	f.AfterFallBack = func(p fallback.Policy, err error) { sb.WriteString("fb") }
+	cb := circuitbreaker.New(id)
+	cb.AfterCircuitBreaker = func(p circuitbreaker.Policy,
+		status *circuitbreaker.CircuitBreaker, err error) {
+		sb.WriteString("cb")
+	}
+	rt := retry.New(id)
+	rt.AfterTry = func(p retry.Policy, try int, err error) { sb.WriteString("rt") }
 	tmp := timeout.New(id)
 	tmp.Timeout = time.Second * 5
+	tmp.AfterTimeout = func(p timeout.Policy, err error) { sb.WriteString("tm") }
+
+	d := resiliencia.Decorate(func() error { return nil })
+	d = d.WithFallback(f)
+	d = d.WithCircuitBreaker(cb)
+	d = d.WithRetry(rt)
 	d = d.WithTimeout(tmp)
 
 	metric, err := d.Execute()
 	assert.Nil(t, err)
+	assert.Equal(t, "tmrtcbfb", sb.String())
 
 	r := metric[reflect.TypeOf(timeout.Metric{}).String()]
 	tm, _ := r.(timeout.Metric)

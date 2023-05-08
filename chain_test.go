@@ -151,11 +151,11 @@ func TestChainerExecuteFallbackWithCircuitBreakerAndRetryAndTimeout(t *testing.T
 	tmp.Timeout = time.Second * 5
 	tmp.AfterTimeout = func(p timeout.Policy, err error) { sb.WriteString("tm") }
 
-	c := resiliencia.Chain(f, cb, rt, tmp)
+	c := resiliencia.Chain(tmp, f, rt, cb, f, tmp)
 
 	metric, err := c.Execute(func() error { return nil })
 	assert.Nil(t, err)
-	assert.Equal(t, "tmrtcbfb", sb.String())
+	assert.Equal(t, "tmfbcbrtfbtm", sb.String())
 
 	r := metric[reflect.TypeOf(timeout.Metric{}).String()]
 	tm, _ := r.(timeout.Metric)

@@ -2,16 +2,19 @@ package retry
 
 import (
 	"errors"
+	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/aureliano/resiliencia/core"
 )
 
 var (
-	ErrExceededTries  = errors.New("max tries reached")
-	ErrUnhandledError = errors.New("unhandled error")
-	ErrDelayError     = errors.New("delay must be >= 0")
-	ErrTriesError     = errors.New("tries must be > 0")
+	ErrDelayValidation  = fmt.Errorf("delay must be >= %d", MinDelay)
+	ErrTriesValidation  = fmt.Errorf("tries must be >= %d", MinTries)
+	ErrMaxTriesExceeded = errors.New("max tries reached")
+	ErrUnhandledError   = errors.New("unhandled error")
+	ErrCommandRequired  = errors.New("command nor wrapped policy provided")
 )
 
 type Policy struct {
@@ -21,6 +24,8 @@ type Policy struct {
 	Errors    []error
 	BeforeTry func(p Policy, try int)
 	AfterTry  func(p Policy, try int, err error)
+	Command   core.Command
+	Policy    core.PolicySupplier
 }
 
 type Metric struct {
@@ -29,6 +34,7 @@ type Metric struct {
 	Status     int
 	StartedAt  time.Time
 	FinishedAt time.Time
+	Error      error
 	Executions []struct {
 		Iteration  int
 		StartedAt  time.Time
@@ -38,6 +44,11 @@ type Metric struct {
 	}
 }
 
+const (
+	MinDelay = 0
+	MinTries = 1
+)
+
 func New(serviceID string) Policy {
 	return Policy{
 		ServiceID: serviceID,
@@ -46,9 +57,9 @@ func New(serviceID string) Policy {
 	}
 }
 
-func (p Policy) Run(cmd core.Command) (*Metric, error) {
-	if err := p.validate(); err != nil {
-		return nil, err
+func (p Policy) Run(metric core.Metric) error {
+	if err := validate(p); err != nil {
+		return err
 	}
 
 	m := Metric{ID: p.ServiceID, StartedAt: time.Now(), Executions: make([]struct {
@@ -57,32 +68,45 @@ func (p Policy) Run(cmd core.Command) (*Metric, error) {
 		FinishedAt time.Time
 		Duration   time.Duration
 		Error      error
-	}, p.Tries)}
+	}, 0)}
 	done := false
 
 	for i := 0; i < p.Tries; i++ {
 		turn := i + 1
 		m.Tries = turn
-		m.Executions[i].Iteration = turn
+		exec := struct {
+			Iteration  int
+			StartedAt  time.Time
+			FinishedAt time.Time
+			Duration   time.Duration
+			Error      error
+		}{}
+
+		exec.Iteration = turn
 
 		if p.BeforeTry != nil {
 			p.BeforeTry(p, turn)
 		}
 
-		m.Executions[i].StartedAt = time.Now()
-		err := cmd()
-		m.Executions[i].Error = err
-		m.Executions[i].FinishedAt = time.Now()
+		exec.StartedAt = time.Now()
+		err := execute(p, metric)
+
+		exec.Error = err
+		exec.FinishedAt = time.Now()
 		m.FinishedAt = time.Now()
-		m.Executions[i].Duration = m.Executions[i].FinishedAt.Sub(m.Executions[i].StartedAt)
+		exec.Duration = exec.FinishedAt.Sub(exec.StartedAt)
+		m.Executions = append(m.Executions, exec)
 
 		if p.AfterTry != nil {
 			p.AfterTry(p, turn, err)
 		}
 
-		if err != nil && !p.handledError(err) {
+		if err != nil && !handledError(p, err) {
 			m.Status = 1
-			return &m, ErrUnhandledError
+			m.Error = ErrUnhandledError
+			metric[reflect.TypeOf(m).String()] = m
+
+			return ErrUnhandledError
 		}
 
 		if err == nil {
@@ -94,34 +118,42 @@ func (p Policy) Run(cmd core.Command) (*Metric, error) {
 	}
 
 	m.FinishedAt = time.Now()
+
 	if !done {
 		m.Status = 1
-		return &m, ErrExceededTries
+		m.Error = ErrMaxTriesExceeded
+		metric[reflect.TypeOf(m).String()] = m
+
+		return ErrMaxTriesExceeded
+	}
+	metric[reflect.TypeOf(m).String()] = m
+
+	return nil
+}
+
+func (p Policy) WithCommand(command core.Command) core.PolicySupplier {
+	p.Command = command
+	return p
+}
+
+func (p Policy) WithPolicy(policy core.PolicySupplier) core.PolicySupplier {
+	p.Policy = policy
+	return p
+}
+
+func execute(p Policy, metric core.Metric) error {
+	if p.Command != nil && p.Policy == nil {
+		return p.Command()
 	}
 
-	return &m, nil
+	return p.Policy.Run(metric)
 }
 
-func (p Policy) handledError(err error) bool {
-	return core.ErrorInErrors(p.Errors, err)
-}
-
-func (p Policy) validate() error {
-	switch {
-	case p.Delay < 0:
-		return ErrDelayError
-	case p.Tries <= 0:
-		return ErrTriesError
-	default:
-		return nil
-	}
-}
-
-func (m *Metric) ServiceID() string {
+func (m Metric) ServiceID() string {
 	return m.ID
 }
 
-func (m *Metric) PolicyDuration() time.Duration {
+func (m Metric) PolicyDuration() time.Duration {
 	sum := time.Duration(0)
 	for _, exec := range m.Executions {
 		sum += exec.Duration
@@ -130,6 +162,23 @@ func (m *Metric) PolicyDuration() time.Duration {
 	return sum
 }
 
-func (m *Metric) Success() bool {
-	return m.Status == 0
+func (m Metric) Success() bool {
+	return (m.Status == 0) && (m.Error == nil)
+}
+
+func handledError(p Policy, err error) bool {
+	return core.ErrorInErrors(p.Errors, err)
+}
+
+func validate(p Policy) error {
+	switch {
+	case p.Delay < MinDelay:
+		return ErrDelayValidation
+	case p.Tries < MinTries:
+		return ErrTriesValidation
+	case p.Command == nil && p.Policy == nil:
+		return ErrCommandRequired
+	default:
+		return nil
+	}
 }

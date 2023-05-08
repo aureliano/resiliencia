@@ -2,14 +2,16 @@ package fallback
 
 import (
 	"errors"
+	"reflect"
 	"time"
 
 	"github.com/aureliano/resiliencia/core"
 )
 
 var (
-	ErrNoFallBackHandler = errors.New("no fallback handler")
-	ErrUnhandledError    = errors.New("unhandled error")
+	ErrNoFallBackHandler    = errors.New("no fallback handler")
+	ErrCommandRequiredError = errors.New("command nor wrapped policy provided")
+	ErrUnhandledError       = errors.New("unhandled error")
 )
 
 type Policy struct {
@@ -18,6 +20,8 @@ type Policy struct {
 	FallBackHandler func(err error)
 	BeforeFallBack  func(p Policy)
 	AfterFallBack   func(p Policy, err error)
+	Command         core.Command
+	Policy          core.PolicySupplier
 }
 
 type Metric struct {
@@ -32,9 +36,9 @@ func New(serviceID string) Policy {
 	return Policy{ServiceID: serviceID}
 }
 
-func (p Policy) Run(cmd core.Command) (*Metric, error) {
-	if err := p.validate(); err != nil {
-		return nil, err
+func (p Policy) Run(metric core.Metric) error {
+	if err := validate(p); err != nil {
+		return err
 	}
 
 	m := Metric{ID: p.ServiceID, StartedAt: time.Now()}
@@ -42,46 +46,70 @@ func (p Policy) Run(cmd core.Command) (*Metric, error) {
 		p.BeforeFallBack(p)
 	}
 
-	err := cmd()
-	m.Error = err
+	err := execute(p, metric)
 
 	if p.AfterFallBack != nil {
 		p.AfterFallBack(p, err)
 	}
 	m.FinishedAt = time.Now()
 
-	if err != nil && !p.handledError(err) {
+	if err != nil && !handledError(p, err) {
 		m.Status = 1
-		return &m, ErrUnhandledError
+		m.Error = ErrUnhandledError
+		metric[reflect.TypeOf(m).String()] = m
+
+		return ErrUnhandledError
 	}
 
 	if err != nil {
 		p.FallBackHandler(err)
 	}
-
-	return &m, nil
-}
-
-func (p Policy) handledError(err error) bool {
-	return core.ErrorInErrors(p.Errors, err)
-}
-
-func (p Policy) validate() error {
-	if p.FallBackHandler == nil {
-		return ErrNoFallBackHandler
-	}
+	metric[reflect.TypeOf(m).String()] = m
 
 	return nil
 }
 
-func (m *Metric) ServiceID() string {
+func (p Policy) WithCommand(command core.Command) core.PolicySupplier {
+	p.Command = command
+	return p
+}
+
+func (p Policy) WithPolicy(policy core.PolicySupplier) core.PolicySupplier {
+	p.Policy = policy
+	return p
+}
+
+func execute(p Policy, metric core.Metric) error {
+	if p.Command != nil && p.Policy == nil {
+		return p.Command()
+	}
+
+	return p.Policy.Run(metric)
+}
+
+func handledError(p Policy, err error) bool {
+	return core.ErrorInErrors(p.Errors, err)
+}
+
+func validate(p Policy) error {
+	switch {
+	case p.FallBackHandler == nil:
+		return ErrNoFallBackHandler
+	case p.Command == nil && p.Policy == nil:
+		return ErrCommandRequiredError
+	default:
+		return nil
+	}
+}
+
+func (m Metric) ServiceID() string {
 	return m.ID
 }
 
-func (m *Metric) PolicyDuration() time.Duration {
+func (m Metric) PolicyDuration() time.Duration {
 	return m.FinishedAt.Sub(m.StartedAt)
 }
 
-func (m *Metric) Success() bool {
-	return m.Status == 0
+func (m Metric) Success() bool {
+	return (m.Status == 0) && (m.Error == nil)
 }

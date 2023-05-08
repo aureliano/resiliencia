@@ -2,6 +2,8 @@ package circuitbreaker
 
 import (
 	"errors"
+	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -9,8 +11,9 @@ import (
 )
 
 var (
-	ErrThresholdError         = errors.New("threshold must be >= 1")
-	ErrResetTimeoutError      = errors.New("reset timeout must be >= 1")
+	ErrThresholdValidation    = fmt.Errorf("threshold must be >= %d", MinThresholdErrors)
+	ErrResetTimeoutValidation = fmt.Errorf("reset timeout must be >= %dms", MinResetTimeout.Milliseconds())
+	ErrCommandRequired        = errors.New("command nor wrapped policy provided")
 	ErrCircuitIsOpen          = errors.New("circuit is open")
 	ErrCircuitBreakerNotFound = errors.New("no circuit breaker found")
 )
@@ -25,6 +28,8 @@ type Policy struct {
 	OnOpenCircuit        func(p Policy, status *CircuitBreaker, err error)
 	OnHalfOpenCircuit    func(p Policy, status *CircuitBreaker)
 	OnClosedCircuit      func(p Policy, status *CircuitBreaker)
+	Command              core.Command
+	Policy               core.PolicySupplier
 }
 
 type Metric struct {
@@ -51,9 +56,12 @@ type circuitBreakerCache struct {
 }
 
 const (
-	ClosedState   = 0
-	OpenState     = 1
-	HalfOpenState = 2
+	ClosedState   = CircuitState(0)
+	OpenState     = CircuitState(1)
+	HalfOpenState = CircuitState(2)
+
+	MinResetTimeout    = time.Millisecond * 5
+	MinThresholdErrors = 1
 )
 
 var cbCache = newCache()
@@ -74,14 +82,14 @@ func State(p Policy) (CircuitState, error) {
 func New(serviceID string) Policy {
 	return Policy{
 		ServiceID:       serviceID,
-		ThresholdErrors: 1,
+		ThresholdErrors: MinThresholdErrors,
 		ResetTimeout:    time.Second * 1,
 	}
 }
 
-func (p Policy) Run(cmd core.Command) (*Metric, error) {
-	if err := p.validate(); err != nil {
-		return nil, err
+func (p Policy) Run(metric core.Metric) error {
+	if err := validate(p); err != nil {
+		return err
 	}
 
 	cbCache.mu.Lock()
@@ -103,12 +111,19 @@ func (p Policy) Run(cmd core.Command) (*Metric, error) {
 
 	if cb.State == OpenState {
 		m.Status = 1
+		m.Error = ErrCircuitIsOpen
 		m.FinishedAt = time.Now()
-		return &m, ErrCircuitIsOpen
+		metric[reflect.TypeOf(m).String()] = m
+
+		return ErrCircuitIsOpen
 	}
 
-	err := cmd()
-	m.Error = err
+	err := execute(p, metric)
+
+	if err != nil {
+		m.Error = err
+		m.Status = 1
+	}
 
 	setPostState(p, cb, err)
 	m.State = cb.State
@@ -118,24 +133,27 @@ func (p Policy) Run(cmd core.Command) (*Metric, error) {
 		p.AfterCircuitBreaker(p, cb, err)
 	}
 	m.FinishedAt = time.Now()
+	metric[reflect.TypeOf(m).String()] = m
 
-	return &m, nil
+	return nil
 }
 
-func (p Policy) handledError(err error) bool {
-	return core.ErrorInErrors(p.Errors, err)
+func (p Policy) WithCommand(command core.Command) core.PolicySupplier {
+	p.Command = command
+	return p
 }
 
-func (p Policy) validate() error {
-	const minResetTimeout = time.Millisecond * 5
-	switch {
-	case p.ThresholdErrors < 1:
-		return ErrThresholdError
-	case p.ResetTimeout < minResetTimeout:
-		return ErrResetTimeoutError
-	default:
-		return nil
+func (p Policy) WithPolicy(policy core.PolicySupplier) core.PolicySupplier {
+	p.Policy = policy
+	return p
+}
+
+func execute(p Policy, metric core.Metric) error {
+	if p.Command != nil && p.Policy == nil {
+		return p.Command()
 	}
+
+	return p.Policy.Run(metric)
 }
 
 func setInitialState(p Policy, cb *CircuitBreaker) {
@@ -148,8 +166,13 @@ func setInitialState(p Policy, cb *CircuitBreaker) {
 }
 
 func setPostState(p Policy, cb *CircuitBreaker, err error) {
-	if err != nil && !p.handledError(err) {
-		openCircuit(p, cb, err)
+	if err != nil {
+		expectedError := handledError(p, err)
+		cb.ErrorCount++
+
+		if cb.ErrorCount >= p.ThresholdErrors || !expectedError {
+			openCircuit(p, cb, err)
+		}
 	} else if cb.State == HalfOpenState {
 		closeCircuit(p, cb)
 	}
@@ -158,7 +181,6 @@ func setPostState(p Policy, cb *CircuitBreaker, err error) {
 func openCircuit(p Policy, cb *CircuitBreaker, err error) {
 	cb.State = OpenState
 	cb.TimeErrorOcurred = time.Now()
-	cb.ErrorCount++
 
 	if p.OnOpenCircuit != nil {
 		p.OnOpenCircuit(p, cb, err)
@@ -182,18 +204,35 @@ func halfOpenCircuit(p Policy, cb *CircuitBreaker) {
 	}
 }
 
+func handledError(p Policy, err error) bool {
+	return core.ErrorInErrors(p.Errors, err)
+}
+
+func validate(p Policy) error {
+	switch {
+	case p.ThresholdErrors < MinThresholdErrors:
+		return ErrThresholdValidation
+	case p.ResetTimeout < MinResetTimeout:
+		return ErrResetTimeoutValidation
+	case p.Command == nil && p.Policy == nil:
+		return ErrCommandRequired
+	default:
+		return nil
+	}
+}
+
 func newCache() *circuitBreakerCache {
 	return &circuitBreakerCache{cache: make(map[string]*CircuitBreaker)}
 }
 
-func (m *Metric) ServiceID() string {
+func (m Metric) ServiceID() string {
 	return m.ID
 }
 
-func (m *Metric) PolicyDuration() time.Duration {
+func (m Metric) PolicyDuration() time.Duration {
 	return m.FinishedAt.Sub(m.StartedAt)
 }
 
-func (m *Metric) Success() bool {
-	return m.Status == 0
+func (m Metric) Success() bool {
+	return (m.Status == 0) && (m.Error == nil)
 }

@@ -13,6 +13,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestDecorationImplementsDecorator(t *testing.T) {
+	d := resiliencia.Decoration{}
+	i := reflect.TypeOf((*resiliencia.Decorator)(nil)).Elem()
+
+	assert.True(t, reflect.TypeOf(d).Implements(i))
+}
+
 func TestExecutePolicyRequired(t *testing.T) {
 	d := resiliencia.Decorate(func() error { return nil })
 

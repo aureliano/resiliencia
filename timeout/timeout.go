@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	ErrTimeoutError           = fmt.Errorf("timeout must be >= %d", MinTimeout)
-	ErrExecutionTimedOutError = errors.New("execution timed out")
-	ErrCommandRequiredError   = errors.New("command nor wrapped policy provided")
+	ErrTimeoutValidation = fmt.Errorf("timeout must be >= %d", MinTimeout)
+	ErrExecutionTimedOut = errors.New("execution timed out")
+	ErrCommandRequired   = errors.New("command nor wrapped policy provided")
 )
 
 type Policy struct {
@@ -70,8 +70,8 @@ waiting:
 				break waiting
 			}
 		case <-time.After(p.Timeout):
-			merror = ErrExecutionTimedOutError
-			m.Error = ErrExecutionTimedOutError
+			merror = ErrExecutionTimedOut
+			m.Error = ErrExecutionTimedOut
 			m.Status = 1
 
 			break waiting
@@ -121,9 +121,9 @@ func (m Metric) Success() bool {
 func validate(p Policy) error {
 	switch {
 	case p.Timeout < MinTimeout:
-		return ErrTimeoutError
+		return ErrTimeoutValidation
 	case p.Command == nil && p.Policy == nil:
-		return ErrCommandRequiredError
+		return ErrCommandRequired
 	default:
 		return nil
 	}

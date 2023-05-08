@@ -66,7 +66,7 @@ func TestRunValidatePolicyTries(t *testing.T) {
 	metric := core.NewMetric()
 	err := p.Run(metric)
 
-	assert.ErrorIs(t, err, retry.ErrTriesError)
+	assert.ErrorIs(t, err, retry.ErrTriesValidation)
 }
 
 func TestRunValidatePolicyDelay(t *testing.T) {
@@ -75,7 +75,7 @@ func TestRunValidatePolicyDelay(t *testing.T) {
 	metric := core.NewMetric()
 	err := p.Run(metric)
 
-	assert.ErrorIs(t, err, retry.ErrDelayError)
+	assert.ErrorIs(t, err, retry.ErrDelayValidation)
 }
 
 func TestRunValidatePolicyCommand(t *testing.T) {
@@ -84,7 +84,7 @@ func TestRunValidatePolicyCommand(t *testing.T) {
 	metric := core.NewMetric()
 	err := p.Run(metric)
 
-	assert.ErrorIs(t, err, retry.ErrCommandRequiredError)
+	assert.ErrorIs(t, err, retry.ErrCommandRequired)
 }
 
 func TestRunCommandMaxTriesExceeded(t *testing.T) {

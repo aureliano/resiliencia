@@ -10,11 +10,11 @@ import (
 )
 
 var (
-	ErrDelayError           = fmt.Errorf("delay must be >= %d", MinDelay)
-	ErrTriesError           = fmt.Errorf("tries must be >= %d", MinTries)
-	ErrMaxTriesExceeded     = errors.New("max tries reached")
-	ErrUnhandledError       = errors.New("unhandled error")
-	ErrCommandRequiredError = errors.New("command nor wrapped policy provided")
+	ErrDelayValidation  = fmt.Errorf("delay must be >= %d", MinDelay)
+	ErrTriesValidation  = fmt.Errorf("tries must be >= %d", MinTries)
+	ErrMaxTriesExceeded = errors.New("max tries reached")
+	ErrUnhandledError   = errors.New("unhandled error")
+	ErrCommandRequired  = errors.New("command nor wrapped policy provided")
 )
 
 type Policy struct {
@@ -163,11 +163,11 @@ func handledError(p Policy, err error) bool {
 func validate(p Policy) error {
 	switch {
 	case p.Delay < MinDelay:
-		return ErrDelayError
+		return ErrDelayValidation
 	case p.Tries < MinTries:
-		return ErrTriesError
+		return ErrTriesValidation
 	case p.Command == nil && p.Policy == nil:
-		return ErrCommandRequiredError
+		return ErrCommandRequired
 	default:
 		return nil
 	}

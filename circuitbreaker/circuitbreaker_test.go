@@ -110,7 +110,7 @@ func TestRunValidatePolicyThresholdErrors(t *testing.T) {
 	}
 	err := p.Run(core.NewMetric())
 
-	assert.ErrorIs(t, err, circuitbreaker.ErrThresholdError)
+	assert.ErrorIs(t, err, circuitbreaker.ErrThresholdValidation)
 }
 
 func TestRunValidatePolicyResetTimeout(t *testing.T) {
@@ -122,7 +122,7 @@ func TestRunValidatePolicyResetTimeout(t *testing.T) {
 
 	err := p.Run(core.NewMetric())
 
-	assert.ErrorIs(t, err, circuitbreaker.ErrResetTimeoutError)
+	assert.ErrorIs(t, err, circuitbreaker.ErrResetTimeoutValidation)
 }
 
 func TestRunValidatePolicyCommand(t *testing.T) {
@@ -133,7 +133,7 @@ func TestRunValidatePolicyCommand(t *testing.T) {
 
 	err := p.Run(core.NewMetric())
 
-	assert.ErrorIs(t, err, circuitbreaker.ErrCommandRequiredError)
+	assert.ErrorIs(t, err, circuitbreaker.ErrCommandRequired)
 }
 
 func TestRunCommandCircuitIsOpen(t *testing.T) {

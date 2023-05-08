@@ -11,9 +11,9 @@ import (
 )
 
 var (
-	ErrThresholdError         = fmt.Errorf("threshold must be >= %d", MinThresholdErrors)
-	ErrResetTimeoutError      = fmt.Errorf("reset timeout must be >= %dms", MinResetTimeout.Milliseconds())
-	ErrCommandRequiredError   = errors.New("command nor wrapped policy provided")
+	ErrThresholdValidation    = fmt.Errorf("threshold must be >= %d", MinThresholdErrors)
+	ErrResetTimeoutValidation = fmt.Errorf("reset timeout must be >= %dms", MinResetTimeout.Milliseconds())
+	ErrCommandRequired        = errors.New("command nor wrapped policy provided")
 	ErrCircuitIsOpen          = errors.New("circuit is open")
 	ErrCircuitBreakerNotFound = errors.New("no circuit breaker found")
 )
@@ -201,11 +201,11 @@ func handledError(p Policy, err error) bool {
 func validate(p Policy) error {
 	switch {
 	case p.ThresholdErrors < MinThresholdErrors:
-		return ErrThresholdError
+		return ErrThresholdValidation
 	case p.ResetTimeout < MinResetTimeout:
-		return ErrResetTimeoutError
+		return ErrResetTimeoutValidation
 	case p.Command == nil && p.Policy == nil:
-		return ErrCommandRequiredError
+		return ErrCommandRequired
 	default:
 		return nil
 	}

@@ -68,7 +68,7 @@ func TestRunValidatePolicyTimeout(t *testing.T) {
 	metric := core.NewMetric()
 	err := p.Run(metric)
 
-	assert.ErrorIs(t, err, timeout.ErrTimeoutError)
+	assert.ErrorIs(t, err, timeout.ErrTimeoutValidation)
 
 	p.Command = nil
 	p.Policy = &mockPolicy{}
@@ -76,7 +76,7 @@ func TestRunValidatePolicyTimeout(t *testing.T) {
 	metric = core.NewMetric()
 	err = p.Run(metric)
 
-	assert.ErrorIs(t, err, timeout.ErrTimeoutError)
+	assert.ErrorIs(t, err, timeout.ErrTimeoutValidation)
 }
 
 func TestRunValidatePolicyCommand(t *testing.T) {
@@ -86,7 +86,7 @@ func TestRunValidatePolicyCommand(t *testing.T) {
 	metric := core.NewMetric()
 	err := p.Run(metric)
 
-	assert.ErrorIs(t, err, timeout.ErrCommandRequiredError)
+	assert.ErrorIs(t, err, timeout.ErrCommandRequired)
 }
 
 func TestRunCommand(t *testing.T) {
@@ -151,12 +151,12 @@ func TestRunCommandTimeout(t *testing.T) {
 	i := metric[reflect.TypeOf(timeout.Metric{}).String()]
 	m, _ := i.(timeout.Metric)
 
-	assert.ErrorIs(t, timeout.ErrExecutionTimedOutError, err)
+	assert.ErrorIs(t, timeout.ErrExecutionTimedOut, err)
 
 	assert.Equal(t, "remote-service", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, timeout.ErrExecutionTimedOutError, m.Error)
+	assert.ErrorIs(t, timeout.ErrExecutionTimedOut, m.Error)
 	assert.Equal(t, "remote-service", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
@@ -258,7 +258,7 @@ func TestRunPolicyTimeout(t *testing.T) {
 	metric := core.NewMetric()
 
 	err := timeoutPolicy.Run(metric)
-	assert.ErrorIs(t, err, timeout.ErrExecutionTimedOutError)
+	assert.ErrorIs(t, err, timeout.ErrExecutionTimedOut)
 
 	r := metric[reflect.TypeOf(Metric{}).String()]
 	assert.Nil(t, r)
@@ -269,7 +269,7 @@ func TestRunPolicyTimeout(t *testing.T) {
 	assert.Equal(t, "remote-service", timeoutMetric.ID)
 	assert.Equal(t, 1, timeoutMetric.Status)
 	assert.Less(t, timeoutMetric.StartedAt, timeoutMetric.FinishedAt)
-	assert.ErrorIs(t, timeoutMetric.Error, timeout.ErrExecutionTimedOutError)
+	assert.ErrorIs(t, timeoutMetric.Error, timeout.ErrExecutionTimedOut)
 	assert.Equal(t, "remote-service", timeoutMetric.ServiceID())
 	assert.False(t, timeoutMetric.Success())
 }

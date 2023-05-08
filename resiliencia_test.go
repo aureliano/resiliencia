@@ -32,11 +32,11 @@ func TestDecorate(t *testing.T) {
 	assert.Equal(t, "serviceId", s.Timeout.ServiceID)
 	assert.Equal(t, time.Minute*2, s.Timeout.Timeout)
 
-	d = d.WithFallback([]fallback.Policy{{ServiceID: "serviceId", FallBackHandler: func(err error) {}}})
+	d = d.WithFallback(fallback.Policy{ServiceID: "serviceId", FallBackHandler: func(err error) {}})
 	s, _ = d.(resiliencia.Decoration)
 
-	assert.Equal(t, "serviceId", s.Fallback[0].ServiceID)
-	assert.NotNil(t, s.Fallback[0].FallBackHandler)
+	assert.Equal(t, "serviceId", s.Fallback.ServiceID)
+	assert.NotNil(t, s.Fallback.FallBackHandler)
 
 	d = d.WithCircuitBreaker(circuitbreaker.Policy{
 		ServiceID:       "serviceId",

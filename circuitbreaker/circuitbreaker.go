@@ -56,9 +56,9 @@ type circuitBreakerCache struct {
 }
 
 const (
-	ClosedState   = 0
-	OpenState     = 1
-	HalfOpenState = 2
+	ClosedState   = CircuitState(0)
+	OpenState     = CircuitState(1)
+	HalfOpenState = CircuitState(2)
 
 	MinResetTimeout    = time.Millisecond * 5
 	MinThresholdErrors = 1

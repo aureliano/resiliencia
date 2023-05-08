@@ -104,7 +104,6 @@ func executeCommand(cerr chan error, c chan string, metric core.Metric, p Policy
 
 	c <- "done"
 	close(c)
-
 }
 
 func (m Metric) ServiceID() string {

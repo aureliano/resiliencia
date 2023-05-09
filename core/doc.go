@@ -18,6 +18,7 @@ MetricRecorder is the interface that all Metrics must implement. It defines some
 are expected to be.
 
 # Metric
+
 Metric is the base metric recorder type. This is the one which is passed through the life cycle of an
 execution chain.
 */

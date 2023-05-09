@@ -10,30 +10,59 @@ import (
 )
 
 var (
+	// Policy timeout is less than minimum required.
 	ErrTimeoutValidation = fmt.Errorf("timeout must be >= %d", MinTimeout)
+
+	// The execution exceeded maximun defined time.
 	ErrExecutionTimedOut = errors.New("execution timed out")
-	ErrCommandRequired   = errors.New("command nor wrapped policy provided")
+
+	// No command nor wrapped policy is set.
+	ErrCommandRequired = errors.New("command nor wrapped policy provided")
 )
 
+// Policy defines the timeout algorithm execution policy.
 type Policy struct {
-	ServiceID     string
-	Timeout       time.Duration
+	// The registered service id.
+	ServiceID string
+
+	// Time to wait until the run times out.
+	Timeout time.Duration
+
+	// Function called before execution.
 	BeforeTimeout func(p Policy)
-	AfterTimeout  func(p Policy, err error)
-	Command       core.Command
-	Policy        core.PolicySupplier
+
+	// Function called after execution.
+	AfterTimeout func(p Policy, err error)
+
+	// The command supplier.
+	Command core.Command
+
+	// Any policy that will be wrapped by this one.
+	Policy core.PolicySupplier
 }
 
+// Metric keeps the running state of the timeout.
 type Metric struct {
-	ID         string
-	Status     int
-	StartedAt  time.Time
+	// The registered service id.
+	ID string
+
+	// The execution status (success is non zero).
+	Status int
+
+	// When execution started.
+	StartedAt time.Time
+
+	// When execution finished.
 	FinishedAt time.Time
-	Error      error
+
+	// The error (if execution wasn't succeeded)
+	Error error
 }
 
+// Minimum expected to be set on Timeout field of a timeout policy.
 const MinTimeout = 0
 
+// New creates a timeout policy with default values set.
 func New(serviceID string) Policy {
 	return Policy{
 		ServiceID: serviceID,
@@ -41,6 +70,9 @@ func New(serviceID string) Policy {
 	}
 }
 
+// Run executes a command supplier or a wrapped policy in a timeout.
+//
+// Possible error(s): ErrTimeoutValidation, ErrCommandRequired, ErrExecutionTimedOut.
 func (p Policy) Run(metric core.Metric) error {
 	if err := validate(p); err != nil {
 		return err
@@ -87,11 +119,13 @@ waiting:
 	return merror
 }
 
+// WithCommand encapsulates this policy in a new policy with given command supplier.
 func (p Policy) WithCommand(command core.Command) core.PolicySupplier {
 	p.Command = command
 	return p
 }
 
+// WithPolicy encapsulates this policy in a new policy with wrapped policy.
 func (p Policy) WithPolicy(policy core.PolicySupplier) core.PolicySupplier {
 	p.Policy = policy
 	return p
@@ -116,14 +150,19 @@ func executeCommand(cerr chan error, c chan string, metric core.Metric, p Policy
 	close(c)
 }
 
+// ServiceID returns the service id registered to the policy binded to this metric.
 func (m Metric) ServiceID() string {
 	return m.ID
 }
 
+// PolicyDuration returns the policy execution duration.
+// In short, finished at less (-) started at.
 func (m Metric) PolicyDuration() time.Duration {
 	return m.FinishedAt.Sub(m.StartedAt)
 }
 
+// Success returns whether the policy execution succeeded or not.
+// In short, status is zero and error is nil.
 func (m Metric) Success() bool {
 	return (m.Status == 0) && (m.Error == nil)
 }

@@ -50,8 +50,8 @@ func (Metric) ServiceID() string {
 }
 
 // PolicyDuration returns the policy execution duration.
-// As this metric is an array of chained metrics, verification of success is done by iterating
-// through all the metrics in the chain, summing the return of each call to PolicyDuration.
+// As this metric is an array of chained metrics, duration calculation is done by iterating
+// through all metrics in the chain, summing the return of each call to PolicyDuration.
 //
 // Returns the amount of time spent for all policies to execute.
 func (m Metric) PolicyDuration() time.Duration {

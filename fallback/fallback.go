@@ -9,33 +9,66 @@ import (
 )
 
 var (
-	ErrNoFallBackHandler    = errors.New("no fallback handler")
+	// No fallback handler provided.
+	ErrNoFallBackHandler = errors.New("no fallback handler")
+
+	// No command nor wrapped policy is set.
 	ErrCommandRequiredError = errors.New("command nor wrapped policy provided")
-	ErrUnhandledError       = errors.New("unhandled error")
+
+	// Unhandled error. It's not in Errors policy field.
+	ErrUnhandledError = errors.New("unhandled error")
 )
 
+// Policy defines the fallback algorithm execution policy.
 type Policy struct {
-	ServiceID       string
-	Errors          []error
+	// The registered service id.
+	ServiceID string
+
+	// Expected erros (not expected errors will make fallback policy fail).
+	Errors []error
+
+	// Function to be executed when execution fail.
 	FallBackHandler func(err error)
-	BeforeFallBack  func(p Policy)
-	AfterFallBack   func(p Policy, err error)
-	Command         core.Command
-	Policy          core.PolicySupplier
+
+	// Function called before execution.
+	BeforeFallBack func(p Policy)
+
+	// Function called after execution.
+	AfterFallBack func(p Policy, err error)
+
+	// The command supplier.
+	Command core.Command
+
+	// Any policy that will be wrapped by this one.
+	Policy core.PolicySupplier
 }
 
+// Metric keeps the running state of the fallback.
 type Metric struct {
-	ID         string
-	Status     int
-	StartedAt  time.Time
+	// The registered service id.
+	ID string
+
+	// The execution status (success is non zero).
+	Status int
+
+	// When execution started.
+	StartedAt time.Time
+
+	// When execution finished.
 	FinishedAt time.Time
-	Error      error
+
+	// The error (if execution wasn't succeeded)
+	Error error
 }
 
+// New creates a fallback policy with default values set.
 func New(serviceID string) Policy {
 	return Policy{ServiceID: serviceID}
 }
 
+// Run executes a command supplier or a wrapped policy in a fallback.
+//
+// Possible error(s): ErrCommandRequired, ErrNoFallBackHandler, ErrorErrUnhandledError.
 func (p Policy) Run(metric core.Metric) error {
 	if err := validate(p); err != nil {
 		return err
@@ -69,11 +102,13 @@ func (p Policy) Run(metric core.Metric) error {
 	return nil
 }
 
+// WithCommand encapsulates this policy in a new policy with given command supplier.
 func (p Policy) WithCommand(command core.Command) core.PolicySupplier {
 	p.Command = command
 	return p
 }
 
+// WithPolicy encapsulates this policy in a new policy with wrapped policy.
 func (p Policy) WithPolicy(policy core.PolicySupplier) core.PolicySupplier {
 	p.Policy = policy
 	return p
@@ -102,14 +137,19 @@ func validate(p Policy) error {
 	}
 }
 
+// ServiceID returns the service id registered to the policy binded to this metric.
 func (m Metric) ServiceID() string {
 	return m.ID
 }
 
+// PolicyDuration returns the policy execution duration.
+// In short, finished at less (-) started at.
 func (m Metric) PolicyDuration() time.Duration {
 	return m.FinishedAt.Sub(m.StartedAt)
 }
 
+// Success returns whether the policy execution succeeded or not.
+// In short, status is zero and error is nil.
 func (m Metric) Success() bool {
 	return (m.Status == 0) && (m.Error == nil)
 }

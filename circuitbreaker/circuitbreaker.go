@@ -11,43 +11,95 @@ import (
 )
 
 var (
-	ErrThresholdValidation    = fmt.Errorf("threshold must be >= %d", MinThresholdErrors)
+	// Policy threshold is less than minimum required.
+	ErrThresholdValidation = fmt.Errorf("threshold must be >= %d", MinThresholdErrors)
+
+	// Policy reset timeout is less than minimum required.
 	ErrResetTimeoutValidation = fmt.Errorf("reset timeout must be >= %dms", MinResetTimeout.Milliseconds())
-	ErrCommandRequired        = errors.New("command nor wrapped policy provided")
-	ErrCircuitIsOpen          = errors.New("circuit is open")
+
+	// No command nor wrapped policy is set.
+	ErrCommandRequired = errors.New("command nor wrapped policy provided")
+
+	// Circuit breaker is open and accesses to service are not allowed.
+	ErrCircuitIsOpen = errors.New("circuit is open")
+
+	// No circuit breaker found to the given service.
 	ErrCircuitBreakerNotFound = errors.New("no circuit breaker found")
 )
 
+// Policy defines the circuit breaker algorithm execution policy.
 type Policy struct {
-	ServiceID            string
-	ThresholdErrors      int
-	ResetTimeout         time.Duration
-	Errors               []error
+	// The registered service id.
+	ServiceID string
+
+	// Number of errors until the circuit breaker is open.
+	ThresholdErrors int
+
+	// How long to wait to change the circuit state to HalfOpen.
+	ResetTimeout time.Duration
+
+	// Expected erros (not expected errors will open the circuit breaker immediately).
+	Errors []error
+
+	// Function called before execution.
 	BeforeCircuitBreaker func(p Policy, status *CircuitBreaker)
-	AfterCircuitBreaker  func(p Policy, status *CircuitBreaker, err error)
-	OnOpenCircuit        func(p Policy, status *CircuitBreaker, err error)
-	OnHalfOpenCircuit    func(p Policy, status *CircuitBreaker)
-	OnClosedCircuit      func(p Policy, status *CircuitBreaker)
-	Command              core.Command
-	Policy               core.PolicySupplier
+
+	// Function called after execution.
+	AfterCircuitBreaker func(p Policy, status *CircuitBreaker, err error)
+
+	// Function called when circuit breaker is just open.
+	OnOpenCircuit func(p Policy, status *CircuitBreaker, err error)
+
+	// Function called when circuit is just half open.
+	OnHalfOpenCircuit func(p Policy, status *CircuitBreaker)
+
+	// Function called when circuit is just closed.
+	OnClosedCircuit func(p Policy, status *CircuitBreaker)
+
+	// The command supplier.
+	Command core.Command
+
+	// Any policy that will be wrapped by this one.
+	Policy core.PolicySupplier
 }
 
+// Metric keeps the running state of the circuit breaker.
 type Metric struct {
-	ID         string
-	Status     int
-	StartedAt  time.Time
+	// The registered service id.
+	ID string
+
+	// The execution status (success is non zero).
+	Status int
+
+	// When execution started.
+	StartedAt time.Time
+
+	// When execution finished.
 	FinishedAt time.Time
-	Error      error
-	State      CircuitState
+
+	// The error (if execution wasn't succeeded)
+	Error error
+
+	// Circuit breaker state (closed, open or half open).
+	State CircuitState
+
+	// How many errors occurred.
 	ErrorCount int
 }
 
+// CircuitState is the circuit breaker state.
 type CircuitState int
 
+// CircuitBreaker is the abstraction of a circuit breaker policy.
 type CircuitBreaker struct {
-	State            CircuitState
+	// Circuit breaker state (closed, open or half open).
+	State CircuitState
+
+	// When error occurred.
 	TimeErrorOcurred time.Time
-	ErrorCount       int
+
+	// How many errors occurred.
+	ErrorCount int
 }
 
 type circuitBreakerCache struct {
@@ -56,16 +108,29 @@ type circuitBreakerCache struct {
 }
 
 const (
-	ClosedState   = CircuitState(0)
-	OpenState     = CircuitState(1)
+	// Indicates that circuit breaker is healthy and the requests will be fulfilled.
+	ClosedState = CircuitState(0)
+
+	// Indicates that circuit breaker is unhealthy and no requests will be serviced.
+	OpenState = CircuitState(1)
+
+	// Indicates that circuit breaker is in a state between healthy and unhealthy.
 	HalfOpenState = CircuitState(2)
 
-	MinResetTimeout    = time.Millisecond * 5
+	// Minimum expected to be set on ResetTimeout field of a circuit breaker policy.
+	MinResetTimeout = time.Millisecond * 5
+
+	// Minimum expected to be set on ThresholdErrors field of a circuit breaker policy.
 	MinThresholdErrors = 1
 )
 
 var cbCache = newCache()
 
+// State queries for a circuit breaker state by service id.
+//
+// Returns the state of a circuit breaker or an error if no circuit breaker is found.
+//
+// Possible error(s): ErrCircuitBreakerNotFound
 func State(p Policy) (CircuitState, error) {
 	cbCache.mu.Lock()
 	defer cbCache.mu.Unlock()
@@ -79,6 +144,7 @@ func State(p Policy) (CircuitState, error) {
 	return cb.State, nil
 }
 
+// New creates a circuit breaker policy with default values set.
 func New(serviceID string) Policy {
 	return Policy{
 		ServiceID:       serviceID,
@@ -87,6 +153,9 @@ func New(serviceID string) Policy {
 	}
 }
 
+// Run executes a command supplier or a wrapped policy in a circuit breaker.
+//
+// Possible error(s): ErrThresholdValidation, ErrResetTimeoutValidation, ErrCommandRequiredErrCircuitIsOpen.
 func (p Policy) Run(metric core.Metric) error {
 	if err := validate(p); err != nil {
 		return err
@@ -138,11 +207,13 @@ func (p Policy) Run(metric core.Metric) error {
 	return nil
 }
 
+// WithCommand encapsulates this policy in a new policy with given command supplier.
 func (p Policy) WithCommand(command core.Command) core.PolicySupplier {
 	p.Command = command
 	return p
 }
 
+// WithPolicy encapsulates this policy in a new policy with wrapped policy.
 func (p Policy) WithPolicy(policy core.PolicySupplier) core.PolicySupplier {
 	p.Policy = policy
 	return p
@@ -225,14 +296,19 @@ func newCache() *circuitBreakerCache {
 	return &circuitBreakerCache{cache: make(map[string]*CircuitBreaker)}
 }
 
+// ServiceID returns the service id registered to the policy binded to this metric.
 func (m Metric) ServiceID() string {
 	return m.ID
 }
 
+// PolicyDuration returns the policy execution duration.
+// In short, finished at less (-) started at.
 func (m Metric) PolicyDuration() time.Duration {
 	return m.FinishedAt.Sub(m.StartedAt)
 }
 
+// Success returns whether the policy execution succeeded or not.
+// In short, status is zero and error is nil.
 func (m Metric) Success() bool {
 	return (m.Status == 0) && (m.Error == nil)
 }

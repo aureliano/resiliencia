@@ -29,7 +29,7 @@ There are two ways to run a command under a policy. Using a Command supplier
 		...
 	}
 
-	// Prints circuit breaker metric.
+	// Prints Circuit Breaker metric.
 	fmt.Println(metric)
 
 # Wrapped policy
@@ -64,5 +64,40 @@ There are two ways to run a command under a policy. Using a Command supplier
 
 	// Prints Circuit Breaker metric.
 	fmt.Println(cbMetric)
+
+# Listener
+
+In order to keep tracking of what is happening on the execution, you may use listeners to generate some events.
+Circuit Breaker supports listeners to track some events that are described bellow.
+
+	p := circuitbreaker.New("service-id")
+	...
+
+	// It is called before any execution.
+	p.BeforeCircuitBreaker = func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {
+		fmt.Println("Before circuit breaker.")
+	}
+
+	// It is called only when the circuit breaker changes to open.
+	p.OnOpenCircuit = func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {
+		fmt.Println("Circuit breaker has just open.")
+	}
+
+	// It is called only when the circuit breaker changes to half open.
+	p.OnHalfOpenCircuit = func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {
+		fmt.Println("Circuit breaker has just half open.")
+	}
+
+	// It is called only when the circuit breaker changes to closed.
+	p.OnClosedCircuit = func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker) {
+		fmt.Println("Circuit breaker has just closed.")
+	}
+
+	// It is called after any execution.
+	p.AfterCircuitBreaker = func(p circuitbreaker.Policy, status *circuitbreaker.CircuitBreaker, err error) {
+		fmt.Println("After circuit breaker.")
+	}
+
+	_ = p.Run(core.Metric())
 */
 package circuitbreaker

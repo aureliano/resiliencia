@@ -1,7 +1,7 @@
 /*
-O pacote core contém as definições de tipos e funções necessárias ao funcionamento das funcionalidades
-desta biblioteca. As declarações dos contratos que definem o comportamento que as métricas e as políticas
-devem serguir estão neste pacote.
+The core package contains the definitions of types and functions necessary for the functionalities to work.
+of this library. Contract statements that define the behavior that metrics and policies
+must follow are in this package.
 
 # Command
 

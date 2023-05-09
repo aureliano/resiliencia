@@ -10,45 +10,97 @@ import (
 )
 
 var (
-	ErrDelayValidation  = fmt.Errorf("delay must be >= %d", MinDelay)
-	ErrTriesValidation  = fmt.Errorf("tries must be >= %d", MinTries)
+	// Policy delay is less than minimum required.
+	ErrDelayValidation = fmt.Errorf("delay must be >= %d", MinDelay)
+
+	// Policy tries is less than minimum required.
+	ErrTriesValidation = fmt.Errorf("tries must be >= %d", MinTries)
+
+	// Number of executions has reached the limit.
 	ErrMaxTriesExceeded = errors.New("max tries reached")
-	ErrUnhandledError   = errors.New("unhandled error")
-	ErrCommandRequired  = errors.New("command nor wrapped policy provided")
+
+	// Unhandled error. It's not in Errors policy field.
+	ErrUnhandledError = errors.New("unhandled error")
+
+	// No command nor wrapped policy is set.
+	ErrCommandRequired = errors.New("command nor wrapped policy provided")
 )
 
+// Policy defines the retry algorithm execution policy.
 type Policy struct {
+	// The registered service id.
 	ServiceID string
-	Tries     int
-	Delay     time.Duration
-	Errors    []error
+
+	// Number of executions to be tried until fail.
+	Tries int
+
+	// Delay between each execution.
+	Delay time.Duration
+
+	// Expected erros (not expected errors will abort execution).
+	Errors []error
+
+	// Function called before each execution.
 	BeforeTry func(p Policy, try int)
-	AfterTry  func(p Policy, try int, err error)
-	Command   core.Command
-	Policy    core.PolicySupplier
+
+	// Function called after each execution.
+	AfterTry func(p Policy, try int, err error)
+
+	// The command supplier.
+	Command core.Command
+
+	// Any policy that will be wrapped by this one.
+	Policy core.PolicySupplier
 }
 
+// Metric keeps the running state of the retry.
 type Metric struct {
-	ID         string
-	Tries      int
-	Status     int
-	StartedAt  time.Time
+	// The registered service id.
+	ID string
+
+	// Number of executions.
+	Tries int
+
+	// The execution status (success is non zero).
+	Status int
+
+	// When execution started.
+	StartedAt time.Time
+
+	// When execution finished.
 	FinishedAt time.Time
-	Error      error
+
+	// The error (if execution wasn't succeeded)
+	Error error
+
+	// Execution metrics.
 	Executions []struct {
-		Iteration  int
-		StartedAt  time.Time
+		// Iteration id. Starts from one (1).
+		Iteration int
+
+		// When execution started.
+		StartedAt time.Time
+
+		// When execution finished.
 		FinishedAt time.Time
-		Duration   time.Duration
-		Error      error
+
+		// Execution duration.
+		Duration time.Duration
+
+		// The error (if execution wasn't succeeded)
+		Error error
 	}
 }
 
 const (
+	// Minimum expected to be set on Delay field of a retry policy.
 	MinDelay = 0
+
+	// Minimum expected to be set on Tries field of a retry policy.
 	MinTries = 1
 )
 
+// New creates a retry policy with default values set.
 func New(serviceID string) Policy {
 	return Policy{
 		ServiceID: serviceID,
@@ -57,6 +109,10 @@ func New(serviceID string) Policy {
 	}
 }
 
+// Run executes a command supplier or a wrapped policy in a retry.
+//
+// Possible error(s): ErrDelayValidation, ErrTriesValidation, ErrCommandRequired,
+// ErrUnhandledError, ErrMaxTriesExceeded.
 func (p Policy) Run(metric core.Metric) error {
 	if err := validate(p); err != nil {
 		return err
@@ -131,11 +187,13 @@ func (p Policy) Run(metric core.Metric) error {
 	return nil
 }
 
+// WithCommand encapsulates this policy in a new policy with given command supplier.
 func (p Policy) WithCommand(command core.Command) core.PolicySupplier {
 	p.Command = command
 	return p
 }
 
+// WithPolicy encapsulates this policy in a new policy with wrapped policy.
 func (p Policy) WithPolicy(policy core.PolicySupplier) core.PolicySupplier {
 	p.Policy = policy
 	return p
@@ -149,10 +207,16 @@ func execute(p Policy, metric core.Metric) error {
 	return p.Policy.Run(metric)
 }
 
+// ServiceID returns the service id registered to the policy binded to this metric.
 func (m Metric) ServiceID() string {
 	return m.ID
 }
 
+// PolicyDuration returns the policy execution duration.
+// As this metric may have one or more executions, duration calculation is done by iterating
+// through all execution metrics, summing the return of each call to PolicyDuration.
+//
+// Returns the amount of time spent for all policies to execute.
 func (m Metric) PolicyDuration() time.Duration {
 	sum := time.Duration(0)
 	for _, exec := range m.Executions {
@@ -162,6 +226,8 @@ func (m Metric) PolicyDuration() time.Duration {
 	return sum
 }
 
+// Success returns whether the policy execution succeeded or not.
+// In short, status is zero and error is nil.
 func (m Metric) Success() bool {
 	return (m.Status == 0) && (m.Error == nil)
 }

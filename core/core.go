@@ -50,6 +50,10 @@ func (Metric) ServiceID() string {
 }
 
 // PolicyDuration returns the policy execution duration.
+// As this metric is an array of chained metrics, verification of success is done by iterating
+// through all the metrics in the chain, summing the return of each call to PolicyDuration.
+//
+// Returns the amount of time spent for all policies to execute.
 func (m Metric) PolicyDuration() time.Duration {
 	duration := time.Duration(0)
 	for _, v := range m {
@@ -60,6 +64,10 @@ func (m Metric) PolicyDuration() time.Duration {
 }
 
 // Success returns whether the policy execution succeeded or not.
+// As this metric is an array of chained metrics, verification of success is done by iterating
+// through all metrics in the chain and confirming that all calls to the Success method returned true.
+//
+// Return: Whether all metrics returned succesfuly.
 func (m Metric) Success() bool {
 	for _, v := range m {
 		if !v.Success() {

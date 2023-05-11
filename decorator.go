@@ -8,6 +8,7 @@ import (
 	"github.com/aureliano/resiliencia/timeout"
 )
 
+// Decoration is a policy decoration.
 type Decoration struct {
 	Supplier       core.Command
 	Retry          *retry.Policy
@@ -16,6 +17,7 @@ type Decoration struct {
 	CircuitBreaker *circuitbreaker.Policy
 }
 
+// Decorator is the interface that teaches how to decorate a command supplier with policies.
 type Decorator interface {
 	WithRetry(policy retry.Policy) Decorator
 	WithTimeout(policy timeout.Policy) Decorator
@@ -24,26 +26,38 @@ type Decorator interface {
 	Execute() (core.Metric, error)
 }
 
+// WithRetry decorates with a retry policy.
 func (d Decoration) WithRetry(policy retry.Policy) Decorator {
 	d.Retry = &policy
 	return d
 }
 
+// WithTimeout decorates with a timeout policy.
 func (d Decoration) WithTimeout(policy timeout.Policy) Decorator {
 	d.Timeout = &policy
 	return d
 }
 
+// WithFallback decorates with a fallback policy.
 func (d Decoration) WithFallback(policy fallback.Policy) Decorator {
 	d.Fallback = &policy
 	return d
 }
 
+// WithCircuitBreaker decorates with a circuit breaker policy.
 func (d Decoration) WithCircuitBreaker(policy circuitbreaker.Policy) Decorator {
 	d.CircuitBreaker = &policy
 	return d
 }
 
+// Execute starts a chain of responsibility with decorated policies.
+// Execution order: fallback -> circuit breaker -> retry -> timeout -> command
+// That means: fallback starts a circuit breaker and wait its result;
+// circuit breaker starts a retry policy and wait its result;
+// retry starts a timeout and wait its result; timeout calls command and wait
+// its result.
+//
+// Returns chained metrics.
 func (d Decoration) Execute() (core.Metric, error) {
 	if err := validateDecorator(d); err != nil {
 		return nil, err

@@ -4,14 +4,21 @@ import (
 	"github.com/aureliano/resiliencia/core"
 )
 
+// ChainOfResponsibility is a policies chain.
 type ChainOfResponsibility struct {
 	Policies []core.PolicySupplier
 }
 
+// Chainer is the interface that calls the chain of responsibility.
 type Chainer interface {
+	// Execute starts the chain of responsibility.
 	Execute(command core.Command) (core.Metric, error)
 }
 
+// Execute starts the chain of responsibility. The command supplier is set at the end
+// of the chain.
+//
+// Returns chained metrics.
 func (c ChainOfResponsibility) Execute(command core.Command) (core.Metric, error) {
 	if err := validateChain(c, command); err != nil {
 		return nil, err

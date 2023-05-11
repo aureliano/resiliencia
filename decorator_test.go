@@ -176,13 +176,16 @@ func TestDecoratorExecuteFallbackWithCircuitBreakerAndRetryAndTimeout(t *testing
 	tmp.Timeout = time.Second * 5
 	tmp.AfterTimeout = func(p timeout.Policy, err error) { sb.WriteString("tm") }
 
-	d := resiliencia.Decorate(func() error { return nil })
-	d = d.WithFallback(f)
-	d = d.WithCircuitBreaker(cb)
-	d = d.WithRetry(rt)
-	d = d.WithTimeout(tmp)
+	metric, err := resiliencia.
+		Decorate(func() error {
+			return nil
+		}).
+		WithCircuitBreaker(cb).
+		WithFallback(f).
+		WithRetry(rt).
+		WithTimeout(tmp).
+		Execute()
 
-	metric, err := d.Execute()
 	assert.Nil(t, err)
 	assert.Equal(t, "tmrtcbfb", sb.String())
 

@@ -130,7 +130,7 @@ var cbCache = newCache()
 //
 // Returns the state of a circuit breaker or an error if no circuit breaker is found.
 //
-// Possible error(s): ErrCircuitBreakerNotFound
+// Possible error(s): ErrCircuitBreakerNotFound.
 func State(p Policy) (CircuitState, error) {
 	cbCache.mu.Lock()
 	defer cbCache.mu.Unlock()

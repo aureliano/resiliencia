@@ -37,7 +37,8 @@ func getUsername(id int) {
 			userName = name
 
 			return nil
-		}}
+		},
+	}
 
 	metric := core.NewMetric()
 	err := policy.Run(metric)

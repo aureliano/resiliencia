@@ -15,11 +15,11 @@ To install Resiliência, use `go get`:
 
 Or you can install specific version as:
 
-`go get github.com/aureliano/resiliencia/v0`
+`go get github.com/aureliano/resiliencia/v1`
 
 Or even add it as a project depency of your module:
 
-`require github.com/aureliano/resiliencia v0`
+`require github.com/aureliano/resiliencia v1`
 
 ## Policies
 
@@ -30,10 +30,10 @@ or chain other policies together.
 
 |Policy| Premise | Aka| How does the policy mitigate?|
 | ------------- | ------------- |:-------------: |------------- |
-|**Circuit-breaker**<br/><sub>([example](#))</sub>|When a system is seriously struggling, failing fast is better than making users/callers wait.  <br/><br/>Protecting a faulting system from overload can help it recover. | "Stop doing it if it hurts" <br/><br/>"Give that system a break" | Breaks the circuit (blocks executions) for a period, when faults exceed some pre-configured threshold. |
-|**Fallback**<br/><sub>([example](#))</sub>|Things will still fail - plan what you will do when that happens.| "Degrade gracefully"  |Defines an alternative value to be returned (or action to be executed) on failure. |
-|**Retry** <br/><sub>([example](#))</sub>|Many faults are transient and may self-correct after a short delay.| "Maybe it's just a blip" |  Allows configuring automatic retries. |
-|**Timeout**<br/><sub>([example](#))</sub>|Beyond a certain wait, a success result is unlikely.| "Don't wait forever"  |Guarantees the caller won't have to wait beyond the timeout. |
+|**Circuit-breaker**<br/><sub>([example](./example/circuitbreaker/command/main.go))</sub>|When a system is seriously struggling, failing fast is better than making users/callers wait.<br/><br/>Protecting a faulting system from overload can help it recover. | "Stop doing it if it hurts" <br/><br/>"Give that system a break" | Breaks the circuit (blocks executions) for a period, when faults exceed some pre-configured threshold. |
+|**Fallback**<br/><sub>([example](./example/fallback/command/main.go))</sub>|Things will still fail - plan what you will do when that happens.| "Degrade gracefully"  |Defines an alternative value to be returned (or action to be executed) on failure. |
+|**Retry**<br/><sub>([example](./example/retry/command/main.go))</sub>|Many faults are transient and may self-correct after a short delay.| "Maybe it's just a blip" |  Allows configuring automatic retries. |
+|**Timeout**<br/><sub>([example](./example/timeout/command/main.go))</sub>|Beyond a certain wait, a success result is unlikely.| "Don't wait forever"  |Guarantees the caller won't have to wait beyond the timeout. |
 
 For individual use of each policy, access the package referring to it to see
 its documentation. Below we will see how to use a decorator or a policy chain of responsibility.

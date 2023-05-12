@@ -121,7 +121,7 @@ const (
 	MinResetTimeout = time.Millisecond * 5
 
 	// Minimum expected to be set on ThresholdErrors field of a circuit breaker policy.
-	MinThresholdErrors = 1
+	MinThresholdErrors = 0
 )
 
 var cbCache = newCache()
@@ -241,7 +241,7 @@ func setPostState(p Policy, cb *CircuitBreaker, err error) {
 		expectedError := handledError(p, err)
 		cb.ErrorCount++
 
-		if cb.ErrorCount >= p.ThresholdErrors || !expectedError {
+		if cb.ErrorCount > p.ThresholdErrors || !expectedError || (cb.State == HalfOpenState) {
 			openCircuit(p, cb, err)
 		}
 	} else if cb.State == HalfOpenState {

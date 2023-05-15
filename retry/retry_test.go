@@ -2,6 +2,7 @@ package retry_test
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -47,6 +48,10 @@ func (m Metric) PolicyDuration() time.Duration {
 
 func (m Metric) Success() bool {
 	return m.Status == 0
+}
+
+func (m Metric) MetricError() error {
+	return m.Error
 }
 
 func TestPolicyImplementsPolicySupplier(t *testing.T) {
@@ -128,6 +133,7 @@ func TestRunCommandMaxTriesExceeded(t *testing.T) {
 	assert.Equal(t, "postForm", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
+	assert.NotNil(t, m.MetricError())
 
 	for _, exec := range m.Executions {
 		assert.ErrorIs(t, errTest, exec.Error)
@@ -179,6 +185,7 @@ func TestRunCommandHandledErrors(t *testing.T) {
 	assert.Equal(t, "postForm", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
+	assert.Nil(t, m.MetricError())
 
 	assert.ErrorIs(t, errTest1, m.Executions[0].Error)
 	assert.ErrorIs(t, errTest2, m.Executions[1].Error)
@@ -233,6 +240,7 @@ func TestRunCommandUnhandledError(t *testing.T) {
 	assert.Equal(t, "postForm", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
+	assert.NotNil(t, m.MetricError())
 
 	assert.ErrorIs(t, errTest1, m.Executions[0].Error)
 	assert.ErrorIs(t, errTest2, m.Executions[1].Error)
@@ -269,6 +277,7 @@ func TestRunCommand(t *testing.T) {
 	assert.Equal(t, "postForm", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*50)
 	assert.True(t, m.Success())
+	assert.Nil(t, m.MetricError())
 }
 
 func TestRunPolicy(t *testing.T) {
@@ -312,6 +321,7 @@ func TestRunPolicy(t *testing.T) {
 	assert.Greater(t, childMetric.PolicyDuration(), time.Millisecond*150)
 	assert.Greater(t, time.Millisecond*151, childMetric.PolicyDuration())
 	assert.True(t, childMetric.Success())
+	assert.Nil(t, childMetric.MetricError())
 
 	r = metric[reflect.TypeOf(retry.Metric{}).String()]
 	retryMetric, _ := r.(retry.Metric)
@@ -324,6 +334,7 @@ func TestRunPolicy(t *testing.T) {
 	assert.Nil(t, retryMetric.Executions[0].Error)
 	assert.Equal(t, "remote-service", retryMetric.ServiceID())
 	assert.True(t, retryMetric.Success())
+	assert.Nil(t, retryMetric.MetricError())
 }
 
 func TestRunPolicyUnhandledError(t *testing.T) {
@@ -335,6 +346,7 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 	mockMetric := Metric{
 		ID:         "dummy-service",
 		Status:     1,
+		Error:      fmt.Errorf("any"),
 		StartedAt:  time.Now().Add(time.Millisecond * -150),
 		FinishedAt: time.Now(),
 	}
@@ -363,7 +375,7 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 	assert.Equal(t, "dummy-service", childMetric.ID)
 	assert.Equal(t, 1, childMetric.Status)
 	assert.Less(t, childMetric.StartedAt, childMetric.FinishedAt)
-	assert.Nil(t, childMetric.Error)
+	assert.NotNil(t, childMetric.MetricError())
 	assert.Equal(t, "dummy-service", childMetric.ServiceID())
 	assert.Greater(t, childMetric.PolicyDuration(), time.Millisecond*150)
 	assert.Greater(t, time.Millisecond*151, childMetric.PolicyDuration())
@@ -380,6 +392,7 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 	assert.ErrorIs(t, retryMetric.Executions[0].Error, errTest)
 	assert.Equal(t, "remote-service", retryMetric.ServiceID())
 	assert.False(t, retryMetric.Success())
+	assert.NotNil(t, retryMetric.MetricError())
 }
 
 func TestRunPolicyMaxTriesExceeded(t *testing.T) {
@@ -420,7 +433,7 @@ func TestRunPolicyMaxTriesExceeded(t *testing.T) {
 	assert.Equal(t, "dummy-service", childMetric.ID)
 	assert.Equal(t, 1, childMetric.Status)
 	assert.Less(t, childMetric.StartedAt, childMetric.FinishedAt)
-	assert.Nil(t, childMetric.Error)
+	assert.Nil(t, childMetric.MetricError())
 	assert.Equal(t, "dummy-service", childMetric.ServiceID())
 	assert.Greater(t, childMetric.PolicyDuration(), time.Millisecond*150)
 	assert.Greater(t, time.Millisecond*151, childMetric.PolicyDuration())
@@ -439,6 +452,7 @@ func TestRunPolicyMaxTriesExceeded(t *testing.T) {
 	}
 	assert.Equal(t, "remote-service", retryMetric.ServiceID())
 	assert.False(t, retryMetric.Success())
+	assert.NotNil(t, retryMetric.MetricError())
 }
 
 func TestWithCommand(t *testing.T) {

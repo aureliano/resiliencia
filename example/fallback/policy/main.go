@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -13,6 +14,8 @@ func main() {
 	getUsername(1)
 	fmt.Printf("\n--------------------------------\n\n")
 	getUsername(2)
+	fmt.Printf("\n--------------------------------\n\n")
+	getUsername(3)
 }
 
 func getUsername(id int) {
@@ -21,10 +24,15 @@ func getUsername(id int) {
 	service := "service-name"
 
 	policy := fallback.New(service)
-	policy.Errors = []error{errUserNotFound} // Comment this line to get a panic error.
+	policy.Errors = []error{errUserNotFound, timeout.ErrExecutionTimedOut} // Comment this line to get a panic error.
 	policy.FallBackHandler = func(err error) {
-		fmt.Println("...")
-		userName = "New user"
+		if errors.Is(err, errUserNotFound) {
+			userName = "New user"
+		} else if errors.Is(err, timeout.ErrExecutionTimedOut) {
+			userName = "Unknown"
+		} else {
+			fmt.Println("Error:", err)
+		}
 	}
 
 	policy.Policy = timeout.Policy{
@@ -58,6 +66,9 @@ func getUsername(id int) {
 func fetchUserName(id int) string {
 	if id == 1 {
 		return "resiliencia"
+	} else if id == 2 {
+		time.Sleep(time.Millisecond * 250)
+		return "???"
 	}
 
 	return ""

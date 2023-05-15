@@ -80,13 +80,14 @@ func (p Policy) Run(metric core.Metric) error {
 	}
 
 	err := execute(p, metric)
+	err = pickError(err, metric)
 
 	if p.AfterFallBack != nil {
 		p.AfterFallBack(p, err)
 	}
 	m.FinishedAt = time.Now()
 
-	if err != nil && !handledError(p, err) {
+	if !handledError(p, err) {
 		m.Status = 1
 		m.Error = ErrUnhandledError
 		metric[reflect.TypeOf(m).String()] = m
@@ -137,6 +138,14 @@ func validate(p Policy) error {
 	}
 }
 
+func pickError(err error, metric core.MetricRecorder) error {
+	if err != nil {
+		return err
+	}
+
+	return metric.MetricError()
+}
+
 // ServiceID returns the service id registered to the policy binded to this metric.
 func (m Metric) ServiceID() string {
 	return m.ID
@@ -152,4 +161,9 @@ func (m Metric) PolicyDuration() time.Duration {
 // In short, status is zero and error is nil.
 func (m Metric) Success() bool {
 	return (m.Status == 0) && (m.Error == nil)
+}
+
+// MetricError returns the error that a command supplier or a wrapped policy raised.
+func (m Metric) MetricError() error {
+	return m.Error
 }

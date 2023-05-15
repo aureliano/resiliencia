@@ -188,6 +188,7 @@ func (p Policy) Run(metric core.Metric) error {
 	}
 
 	err := execute(p, metric)
+	err = pickError(err, metric)
 
 	if err != nil {
 		m.Error = err
@@ -296,6 +297,14 @@ func newCache() *circuitBreakerCache {
 	return &circuitBreakerCache{cache: make(map[string]*CircuitBreaker)}
 }
 
+func pickError(err error, metric core.MetricRecorder) error {
+	if err != nil {
+		return err
+	}
+
+	return metric.MetricError()
+}
+
 // ServiceID returns the service id registered to the policy binded to this metric.
 func (m Metric) ServiceID() string {
 	return m.ID
@@ -311,4 +320,9 @@ func (m Metric) PolicyDuration() time.Duration {
 // In short, status is zero and error is nil.
 func (m Metric) Success() bool {
 	return (m.Status == 0) && (m.Error == nil)
+}
+
+// MetricError returns the error that a command supplier or a wrapped policy raised.
+func (m Metric) MetricError() error {
+	return m.Error
 }

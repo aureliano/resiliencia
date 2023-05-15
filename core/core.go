@@ -33,6 +33,8 @@ type MetricRecorder interface {
 
 	// Success returns whether the policy execution succeeded or not.
 	Success() bool
+
+	MetricError() error
 }
 
 // Metric is the base metric recorder type. This is the one which is passed through the life
@@ -78,11 +80,26 @@ func (m Metric) Success() bool {
 	return true
 }
 
+// MetricError returns the first error occurred in the policy chain.
+//
+// Return: the first found error.
+func (m Metric) MetricError() error {
+	for _, v := range m {
+		if !v.Success() {
+			return v.MetricError()
+		}
+	}
+
+	return nil
+}
+
 // ErrorInErrors Verifies that an error is a slice of expected errors.
 //
 // Return: whether err is in expectedErrors.
 func ErrorInErrors(expectedErrors []error, err error) bool {
-	if len(expectedErrors) == 0 {
+	if err == nil {
+		return true
+	} else if len(expectedErrors) == 0 {
 		return false
 	}
 

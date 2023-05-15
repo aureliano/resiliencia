@@ -49,6 +49,10 @@ func (m Metric) Success() bool {
 	return m.Status == 0
 }
 
+func (m Metric) MetricError() error {
+	return m.Error
+}
+
 func TestPolicyImplementsPolicySupplier(t *testing.T) {
 	p := fallback.New("service-id")
 	i := reflect.TypeOf((*core.PolicySupplier)(nil)).Elem()
@@ -113,7 +117,7 @@ func TestRunCommandNoFallback(t *testing.T) {
 	assert.Equal(t, "service-id", m.ID)
 	assert.Equal(t, 0, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Nil(t, m.Error)
+	assert.Nil(t, m.MetricError())
 	assert.Equal(t, "service-id", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
@@ -144,7 +148,7 @@ func TestRunCommandHandleError(t *testing.T) {
 	assert.Equal(t, "service-id", m.ID)
 	assert.Equal(t, 0, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Nil(t, m.Error)
+	assert.Nil(t, m.MetricError())
 	assert.Equal(t, "service-id", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
@@ -176,7 +180,7 @@ func TestRunCommandUnhandledError(t *testing.T) {
 	assert.Equal(t, "service-id", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, m.Error, fallback.ErrUnhandledError)
+	assert.ErrorIs(t, m.MetricError(), fallback.ErrUnhandledError)
 	assert.Equal(t, "service-id", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
@@ -237,13 +241,67 @@ func TestRunPolicyUnhandledError(t *testing.T) {
 	assert.False(t, fallbackMetric.Success())
 }
 
-func TestRunPolicyHandledError(t *testing.T) {
+func TestRunPolicyHandledErrorPolicyError(t *testing.T) {
 	fallbackCalled := false
 	errTest1 := errors.New("error test 1")
 	errTest2 := errors.New("error test 2")
 
 	policy := new(mockPolicy)
 	policy.On("Run").Return(errTest2)
+	mockMetric := Metric{
+		ID:         "dummy-service",
+		Status:     1,
+		StartedAt:  time.Now().Add(time.Millisecond * -150),
+		FinishedAt: time.Now(),
+		Error:      errTest2,
+	}
+
+	fallbackPolicy := fallback.New("service-id")
+	fallbackPolicy.Errors = []error{errTest1, errTest2}
+	fallbackPolicy.FallBackHandler = func(err error) {
+		fallbackCalled = true
+	}
+	fallbackPolicy.BeforeFallBack = func(p fallback.Policy) {}
+	fallbackPolicy.AfterFallBack = func(p fallback.Policy, err error) {}
+	fallbackPolicy.Policy = policy
+
+	metric := core.NewMetric()
+	metric[reflect.TypeOf(mockMetric).String()] = mockMetric
+	err := fallbackPolicy.Run(metric)
+
+	r := metric[reflect.TypeOf(Metric{}).String()]
+	childMetric, _ := r.(Metric)
+
+	assert.Nil(t, err)
+	assert.True(t, fallbackCalled)
+
+	assert.Equal(t, "dummy-service", childMetric.ID)
+	assert.Equal(t, 1, childMetric.Status)
+	assert.Less(t, childMetric.StartedAt, childMetric.FinishedAt)
+	assert.ErrorIs(t, childMetric.Error, errTest2)
+	assert.Equal(t, "dummy-service", childMetric.ServiceID())
+	assert.Greater(t, childMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.False(t, childMetric.Success())
+
+	r = metric[reflect.TypeOf(fallback.Metric{}).String()]
+	fallbackMetric, _ := r.(fallback.Metric)
+
+	assert.Equal(t, "service-id", fallbackMetric.ID)
+	assert.Equal(t, 0, fallbackMetric.Status)
+	assert.Less(t, fallbackMetric.StartedAt, fallbackMetric.FinishedAt)
+	assert.Nil(t, fallbackMetric.Error)
+	assert.Equal(t, "service-id", fallbackMetric.ServiceID())
+	assert.Greater(t, fallbackMetric.PolicyDuration(), time.Nanosecond*100)
+	assert.True(t, fallbackMetric.Success())
+}
+
+func TestRunPolicyHandledErrorMetricError(t *testing.T) {
+	fallbackCalled := false
+	errTest1 := errors.New("error test 1")
+	errTest2 := errors.New("error test 2")
+
+	policy := new(mockPolicy)
+	policy.On("Run").Return(nil)
 	mockMetric := Metric{
 		ID:         "dummy-service",
 		Status:     1,

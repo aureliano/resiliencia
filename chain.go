@@ -27,11 +27,9 @@ func (c ChainOfResponsibility) Execute(command core.Command) (core.Metric, error
 	lindex := len(c.Policies) - 1
 	for i := lindex; i >= 0; i-- {
 		if i == lindex {
-			c.Policies[i] = c.Policies[i].WithCommand(command)
-			c.Policies[i] = c.Policies[i].WithPolicy(nil)
+			c.Policies[i] = c.Policies[i].WithCommand(command).WithPolicy(nil)
 		} else {
-			c.Policies[i] = c.Policies[i].WithCommand(nil)
-			c.Policies[i] = c.Policies[i].WithPolicy(c.Policies[i+1])
+			c.Policies[i] = c.Policies[i].WithCommand(nil).WithPolicy(c.Policies[i+1])
 		}
 	}
 

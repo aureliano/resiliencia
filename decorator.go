@@ -63,75 +63,27 @@ func (d Decoration) Execute() (core.Metric, error) {
 		return nil, err
 	}
 
-	metric := core.NewMetric()
-	var err error
+	return Chain(buildPolicyChain(d)...).Execute(d.Supplier)
+}
 
-	switch {
-	case d.Fallback != nil:
-		prepareFallback(&d)
-		err = d.Fallback.Run(metric)
-	case d.CircuitBreaker != nil:
-		prepareCircuitBreaker(&d)
-		err = d.CircuitBreaker.Run(metric)
-	case d.Retry != nil:
-		prepareRetry(&d)
-		err = d.Retry.Run(metric)
-	case d.Timeout != nil:
-		d.Timeout.Command = d.Supplier
-		err = d.Timeout.Run(metric)
+func buildPolicyChain(d Decoration) []core.PolicySupplier {
+	const totalPolicy = 4
+	policies := make([]core.PolicySupplier, 0, totalPolicy)
+
+	if d.Fallback != nil {
+		policies = append(policies, *d.Fallback)
 	}
-
-	return metric, err
-}
-
-func prepareFallback(d *Decoration) {
-	switch {
-	case fallbackCompleteChain(d):
-		d.Timeout.Command = d.Supplier
-		d.Retry.Policy = d.Timeout
-		d.CircuitBreaker.Policy = d.Retry
-		d.Fallback.Policy = d.CircuitBreaker
-	case d.CircuitBreaker != nil && d.Retry != nil && d.Timeout == nil:
-		d.Retry.Command = d.Supplier
-		d.CircuitBreaker.Policy = d.Retry
-		d.Fallback.Policy = d.CircuitBreaker
-	case d.CircuitBreaker != nil && d.Retry == nil && d.Timeout == nil:
-		d.CircuitBreaker.Command = d.Supplier
-		d.Fallback.Policy = d.CircuitBreaker
-	case fallbackOnly(d):
-		d.Fallback.Command = d.Supplier
+	if d.CircuitBreaker != nil {
+		policies = append(policies, *d.CircuitBreaker)
 	}
-}
-
-func fallbackCompleteChain(d *Decoration) bool {
-	return d.CircuitBreaker != nil && d.Retry != nil && d.Timeout != nil
-}
-
-func fallbackOnly(d *Decoration) bool {
-	return d.CircuitBreaker == nil && d.Retry == nil && d.Timeout == nil
-}
-
-func prepareCircuitBreaker(d *Decoration) {
-	switch {
-	case d.Retry != nil && d.Timeout != nil:
-		d.Timeout.Command = d.Supplier
-		d.Retry.Policy = d.Timeout
-		d.CircuitBreaker.Policy = d.Retry
-	case d.Retry != nil && d.Timeout == nil:
-		d.Retry.Command = d.Supplier
-		d.CircuitBreaker.Policy = d.Retry
-	case d.Retry == nil && d.Timeout == nil:
-		d.CircuitBreaker.Command = d.Supplier
+	if d.Retry != nil {
+		policies = append(policies, *d.Retry)
 	}
-}
-
-func prepareRetry(d *Decoration) {
 	if d.Timeout != nil {
-		d.Timeout.Command = d.Supplier
-		d.Retry.Policy = d.Timeout
-	} else {
-		d.Retry.Command = d.Supplier
+		policies = append(policies, *d.Timeout)
 	}
+
+	return policies
 }
 
 func validateDecorator(d Decoration) error {

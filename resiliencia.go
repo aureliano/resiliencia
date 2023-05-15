@@ -38,7 +38,7 @@ func removeNull(array []core.PolicySupplier) []core.PolicySupplier {
 	newArray := make([]core.PolicySupplier, 0, len(array))
 
 	for _, item := range array {
-		if item != nil {
+		if item != (core.PolicySupplier)(nil) {
 			newArray = append(newArray, item)
 		}
 	}

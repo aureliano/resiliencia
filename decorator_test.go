@@ -90,6 +90,7 @@ func TestDecoratorExecuteFallbackWithCircuitBreaker(t *testing.T) {
 	assert.Nil(t, err)
 
 	r := metric[reflect.TypeOf(circuitbreaker.Metric{}).String()]
+	assert.NotNil(t, r)
 	cbm, _ := r.(circuitbreaker.Metric)
 
 	assert.Equal(t, "service-id", cbm.ID)

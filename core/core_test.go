@@ -96,6 +96,8 @@ func TestErrorInErrors(t *testing.T) {
 	for i := 0; i < total; i++ {
 		assert.True(t, core.ErrorInErrors(errs, errs[i]))
 	}
+
+	assert.True(t, core.ErrorInErrors(errs, nil))
 }
 
 func TestErrorInErrorsNotFound(t *testing.T) {

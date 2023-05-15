@@ -97,7 +97,9 @@ func (m Metric) MetricError() error {
 //
 // Return: whether err is in expectedErrors.
 func ErrorInErrors(expectedErrors []error, err error) bool {
-	if len(expectedErrors) == 0 {
+	if err == nil {
+		return true
+	} else if len(expectedErrors) == 0 {
 		return false
 	}
 

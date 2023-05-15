@@ -86,7 +86,7 @@ func (p Policy) Run(metric core.Metric) error {
 	}
 	m.FinishedAt = time.Now()
 
-	if err != nil && !handledError(p, err) {
+	if !handledError(p, err) || !handledError(p, metric.MetricError()) {
 		m.Status = 1
 		m.Error = ErrUnhandledError
 		metric[reflect.TypeOf(m).String()] = m
@@ -96,6 +96,8 @@ func (p Policy) Run(metric core.Metric) error {
 
 	if err != nil {
 		p.FallBackHandler(err)
+	} else if !metric.Success() {
+		p.FallBackHandler(metric.MetricError())
 	}
 	metric[reflect.TypeOf(m).String()] = m
 

@@ -167,6 +167,11 @@ func (m Metric) Success() bool {
 	return (m.Status == 0) && (m.Error == nil)
 }
 
+// MetricError returns the error that a command supplier or a wrapped policy raised.
+func (m Metric) MetricError() error {
+	return m.Error
+}
+
 func validate(p Policy) error {
 	switch {
 	case p.Timeout < MinTimeout:

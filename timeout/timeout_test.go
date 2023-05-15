@@ -50,6 +50,10 @@ func (m Metric) Success() bool {
 	return m.Status == 0
 }
 
+func (m Metric) MetricError() error {
+	return m.Error
+}
+
 func TestPolicyImplementsPolicySupplier(t *testing.T) {
 	p := timeout.New("remote-service")
 	i := reflect.TypeOf((*core.PolicySupplier)(nil)).Elem()
@@ -116,7 +120,7 @@ func TestRunCommand(t *testing.T) {
 	assert.Equal(t, "remote-service", m.ID)
 	assert.Equal(t, 0, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Nil(t, m.Error)
+	assert.Nil(t, m.MetricError())
 	assert.Equal(t, "remote-service", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
@@ -140,7 +144,7 @@ func TestRunCommandWithUnknownError(t *testing.T) {
 	assert.Equal(t, "remote-service", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, m.Error, errTest)
+	assert.ErrorIs(t, m.MetricError(), errTest)
 	assert.Equal(t, "remote-service", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
@@ -166,7 +170,7 @@ func TestRunCommandTimeout(t *testing.T) {
 	assert.Equal(t, "remote-service", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, timeout.ErrExecutionTimedOut, m.Error)
+	assert.ErrorIs(t, timeout.ErrExecutionTimedOut, m.MetricError())
 	assert.Equal(t, "remote-service", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())

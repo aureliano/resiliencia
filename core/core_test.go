@@ -26,6 +26,14 @@ func (m dummyMetric) Success() bool {
 	return m.status == 0
 }
 
+func (m dummyMetric) MetricError() error {
+	if m.status == 0 {
+		return nil
+	}
+
+	return fmt.Errorf("any error")
+}
+
 func TestMetricImplementsMetricRecorder(t *testing.T) {
 	m := core.Metric{}
 	i := reflect.TypeOf((*core.MetricRecorder)(nil)).Elem()
@@ -60,6 +68,17 @@ func TestSuccess(t *testing.T) {
 	m["test2"] = dummyMetric{status: 1}
 
 	assert.False(t, m.Success())
+}
+
+func TestMetricError(t *testing.T) {
+	m := core.NewMetric()
+	m["test"] = dummyMetric{}
+
+	assert.Nil(t, m.MetricError())
+
+	m["test2"] = dummyMetric{status: 1}
+
+	assert.Equal(t, "any error", m.MetricError().Error())
 }
 
 func TestErrorInErrorsEmpty(t *testing.T) {

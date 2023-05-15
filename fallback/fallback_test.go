@@ -49,6 +49,10 @@ func (m Metric) Success() bool {
 	return m.Status == 0
 }
 
+func (m Metric) MetricError() error {
+	return m.Error
+}
+
 func TestPolicyImplementsPolicySupplier(t *testing.T) {
 	p := fallback.New("service-id")
 	i := reflect.TypeOf((*core.PolicySupplier)(nil)).Elem()
@@ -113,7 +117,7 @@ func TestRunCommandNoFallback(t *testing.T) {
 	assert.Equal(t, "service-id", m.ID)
 	assert.Equal(t, 0, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Nil(t, m.Error)
+	assert.Nil(t, m.MetricError())
 	assert.Equal(t, "service-id", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
@@ -144,7 +148,7 @@ func TestRunCommandHandleError(t *testing.T) {
 	assert.Equal(t, "service-id", m.ID)
 	assert.Equal(t, 0, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Nil(t, m.Error)
+	assert.Nil(t, m.MetricError())
 	assert.Equal(t, "service-id", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
@@ -176,7 +180,7 @@ func TestRunCommandUnhandledError(t *testing.T) {
 	assert.Equal(t, "service-id", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, m.Error, fallback.ErrUnhandledError)
+	assert.ErrorIs(t, m.MetricError(), fallback.ErrUnhandledError)
 	assert.Equal(t, "service-id", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())

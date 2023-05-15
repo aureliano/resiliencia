@@ -50,6 +50,10 @@ func (m Metric) Success() bool {
 	return m.Status == 0
 }
 
+func (m Metric) MetricError() error {
+	return m.Error
+}
+
 func TestPolicyImplementsPolicySupplier(t *testing.T) {
 	p := circuitbreaker.New("service-name")
 	i := reflect.TypeOf((*core.PolicySupplier)(nil)).Elem()
@@ -170,7 +174,7 @@ func TestRunCommandCircuitIsOpen(t *testing.T) {
 	assert.Equal(t, "backend-service-name-1", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, m.Error, errTest)
+	assert.ErrorIs(t, m.MetricError(), errTest)
 	assert.EqualValues(t, circuitbreaker.OpenState, m.State)
 	assert.Equal(t, 1, m.ErrorCount)
 	assert.Equal(t, "backend-service-name-1", m.ServiceID())
@@ -186,7 +190,7 @@ func TestRunCommandCircuitIsOpen(t *testing.T) {
 
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, m.Error, circuitbreaker.ErrCircuitIsOpen)
+	assert.ErrorIs(t, m.MetricError(), circuitbreaker.ErrCircuitIsOpen)
 	assert.EqualValues(t, circuitbreaker.OpenState, m.State)
 	assert.Equal(t, 1, m.ErrorCount)
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
@@ -221,7 +225,7 @@ func TestRunCommandCircuitHalfOpenSetToClosed(t *testing.T) {
 	assert.Equal(t, "backend-service-name-2", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, m.Error, errTest)
+	assert.ErrorIs(t, m.MetricError(), errTest)
 	assert.Equal(t, "backend-service-name-2", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
@@ -239,7 +243,7 @@ func TestRunCommandCircuitHalfOpenSetToClosed(t *testing.T) {
 	assert.Equal(t, "backend-service-name-2", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, m.Error, circuitbreaker.ErrCircuitIsOpen)
+	assert.ErrorIs(t, m.MetricError(), circuitbreaker.ErrCircuitIsOpen)
 	assert.Equal(t, "backend-service-name-2", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
@@ -262,7 +266,7 @@ func TestRunCommandCircuitHalfOpenSetToClosed(t *testing.T) {
 	assert.Equal(t, "backend-service-name-2", m.ID)
 	assert.Equal(t, 0, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.Nil(t, m.Error)
+	assert.Nil(t, m.MetricError())
 	assert.Equal(t, "backend-service-name-2", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.True(t, m.Success())
@@ -346,7 +350,7 @@ func TestRunCommandHandledErrors(t *testing.T) {
 	assert.Equal(t, "backend-service-name-3", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, m.Error, errTest1)
+	assert.ErrorIs(t, m.MetricError(), errTest1)
 	assert.Equal(t, "backend-service-name-3", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
@@ -362,7 +366,7 @@ func TestRunCommandHandledErrors(t *testing.T) {
 	assert.Equal(t, "backend-service-name-3", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, m.Error, errTest2)
+	assert.ErrorIs(t, m.MetricError(), errTest2)
 	assert.Equal(t, "backend-service-name-3", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
@@ -395,7 +399,7 @@ func TestRunCommandUnhandledError(t *testing.T) {
 	assert.Equal(t, "backend-service-name-4", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, m.Error, errTest1)
+	assert.ErrorIs(t, m.MetricError(), errTest1)
 	assert.Equal(t, "backend-service-name-4", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())
@@ -411,7 +415,7 @@ func TestRunCommandUnhandledError(t *testing.T) {
 	assert.Equal(t, "backend-service-name-4", m.ID)
 	assert.Equal(t, 1, m.Status)
 	assert.Less(t, m.StartedAt, m.FinishedAt)
-	assert.ErrorIs(t, m.Error, errTest2)
+	assert.ErrorIs(t, m.MetricError(), errTest2)
 	assert.Equal(t, "backend-service-name-4", m.ServiceID())
 	assert.Greater(t, m.PolicyDuration(), time.Nanosecond*100)
 	assert.False(t, m.Success())

@@ -80,6 +80,7 @@ func (p Policy) Run(metric core.Metric) error {
 	}
 
 	err := execute(p, metric)
+	err = pickError(err, metric)
 
 	if p.AfterFallBack != nil {
 		p.AfterFallBack(p, err)
@@ -96,8 +97,6 @@ func (p Policy) Run(metric core.Metric) error {
 
 	if err != nil {
 		p.FallBackHandler(err)
-	} else if !metric.Success() {
-		p.FallBackHandler(metric.MetricError())
 	}
 	metric[reflect.TypeOf(m).String()] = m
 
@@ -137,6 +136,14 @@ func validate(p Policy) error {
 	default:
 		return nil
 	}
+}
+
+func pickError(err error, metric core.MetricRecorder) error {
+	if err != nil {
+		return err
+	}
+
+	return metric.MetricError()
 }
 
 // ServiceID returns the service id registered to the policy binded to this metric.

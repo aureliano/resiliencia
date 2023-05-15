@@ -27,7 +27,7 @@ func getUsername(id int) {
 	service := "service-name"
 
 	policy := circuitbreaker.New(service)
-	policy.ThresholdErrors = 2
+	policy.ThresholdErrors = 1
 	policy.ResetTimeout = time.Millisecond * 500
 	policy.Errors = []error{errServiceUnavailable}
 	policy.Policy = timeout.Policy{

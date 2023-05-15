@@ -158,7 +158,7 @@ func (p Policy) Run(metric core.Metric) error {
 			p.AfterTry(p, turn, err)
 		}
 
-		if !handledError(p, err) || !handledError(p, metric.MetricError()) {
+		if !handledError(p, err) {
 			m.Status = 1
 			m.Error = ErrUnhandledError
 			metric[reflect.TypeOf(m).String()] = m

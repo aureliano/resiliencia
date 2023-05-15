@@ -87,7 +87,7 @@ func (p Policy) Run(metric core.Metric) error {
 	}
 	m.FinishedAt = time.Now()
 
-	if !handledError(p, err) || !handledError(p, metric.MetricError()) {
+	if !handledError(p, err) {
 		m.Status = 1
 		m.Error = ErrUnhandledError
 		metric[reflect.TypeOf(m).String()] = m

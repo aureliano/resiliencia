@@ -404,7 +404,6 @@ func TestRunPolicyMaxTriesExceeded(t *testing.T) {
 	mockMetric := Metric{
 		ID:         "dummy-service",
 		Status:     1,
-		Error:      fmt.Errorf("any"),
 		StartedAt:  time.Now().Add(time.Millisecond * -150),
 		FinishedAt: time.Now(),
 	}
@@ -434,7 +433,7 @@ func TestRunPolicyMaxTriesExceeded(t *testing.T) {
 	assert.Equal(t, "dummy-service", childMetric.ID)
 	assert.Equal(t, 1, childMetric.Status)
 	assert.Less(t, childMetric.StartedAt, childMetric.FinishedAt)
-	assert.NotNil(t, childMetric.MetricError())
+	assert.Nil(t, childMetric.MetricError())
 	assert.Equal(t, "dummy-service", childMetric.ServiceID())
 	assert.Greater(t, childMetric.PolicyDuration(), time.Millisecond*150)
 	assert.Greater(t, time.Millisecond*151, childMetric.PolicyDuration())

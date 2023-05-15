@@ -146,6 +146,7 @@ func (p Policy) Run(metric core.Metric) error {
 
 		exec.StartedAt = time.Now()
 		err := execute(p, metric)
+		err = pickError(err, metric)
 
 		exec.Error = err
 		exec.FinishedAt = time.Now()
@@ -157,7 +158,7 @@ func (p Policy) Run(metric core.Metric) error {
 			p.AfterTry(p, turn, err)
 		}
 
-		if err != nil && !handledError(p, err) {
+		if !handledError(p, err) || !handledError(p, metric.MetricError()) {
 			m.Status = 1
 			m.Error = ErrUnhandledError
 			metric[reflect.TypeOf(m).String()] = m
@@ -252,4 +253,12 @@ func validate(p Policy) error {
 	default:
 		return nil
 	}
+}
+
+func pickError(err error, metric core.MetricRecorder) error {
+	if err != nil {
+		return err
+	}
+
+	return metric.MetricError()
 }
